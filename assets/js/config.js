@@ -17,7 +17,6 @@
 const LS = {
   url: 'bt.supabase.url',
   key: 'bt.supabase.key',
-  demo: 'bt.demo',
   token: 'bt.device.token',
   admin: 'bt.admin.pw',
 };

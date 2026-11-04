@@ -9,16 +9,15 @@ Dirección de arte: **Dark Editorial** — carbón, blanco roto y verde ácido, 
 
 ## Puesta en marcha
 
-1. Abre la web. La primera vez pedirá **Project URL** y **clave pública (anon)** de Supabase.
-   - Supabase → *Project Settings* → *API* → `Project URL` y `anon public`.
-   - Se guardan en el navegador (localStorage), nunca en el repositorio.
-   - Para fijarlas en el código, rellena `assets/js/config.js` (`url` y `key`).
+1. Abre la web. La primera vez pedirá **Project URL** y la **clave pública** de Supabase.
+   - Supabase → **Settings → API Keys** → pestaña *Publishable and secret API keys* → copia la **publishable** (`sb_publishable_…`).
+   - Nunca la **secret**: se salta todas las reglas y no debe estar en una web.
+   - Se guardan en el navegador (localStorage), nunca en el repositorio. Para que no la tenga que pegar
+     nadie, ponla en `assets/js/config.js` (`key`): es pública por diseño.
 2. Entra con la cuenta compartida del grupo (`vestuario@baiters.local` y la contraseña del grupo).
 3. La primera vez elige **quién eres** en la lista de nombres y después **tu dorsal**. El número queda
    reservado para ti: nadie más puede cogerlo. Ese móvil queda vinculado a tu jugador para votar.
-4. La zona **Admin** pide la contraseña de administrador (independiente de la del grupo).
-
-> ¿Quieres ver el diseño sin datos? En la pantalla de acceso hay un botón **Ver demo del diseño**.
+4. La zona **Admin** (última pestaña) pide la contraseña de administrador, independiente de la del grupo.
 
 ---
 
@@ -45,7 +44,6 @@ Dirección de arte: **Dark Editorial** — carbón, blanco roto y verde ácido, 
 | `assets/js/data.js` | Consultas, votaciones, identidad del dispositivo y RPCs |
 | `assets/js/views.js` | Inicio, ranking, partidos, detalle de partido, perfil y plantilla |
 | `assets/js/admin.js` | Panel de administración |
-| `assets/js/demo.js` | Datos de demostración (solo diseño) |
 | `assets/js/config.js` | URL y clave pública de Supabase |
 | `assets/img/` | Marca y silueta de camiseta para las placas sin foto |
 | `HANDOFF.md` | Traspaso completo: estilo, decisiones, estado y pendientes |

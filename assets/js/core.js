@@ -26,7 +26,6 @@ export function resetClient() {
 /* ------------------------------------------------------------------ */
 
 export const state = {
-  demo: false,
   me: null, // jugador de este dispositivo
   players: [],
   stats: [],
