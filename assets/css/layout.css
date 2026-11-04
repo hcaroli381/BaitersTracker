@@ -208,6 +208,109 @@
   justify-content: flex-start;
 }
 
+/* Paso 2: elección de dorsal */
+.pick--num .pick__title {
+  font-size: clamp(36px, 10vw, 68px);
+  margin-bottom: 20px;
+}
+
+.pickstep {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--acid);
+  background: var(--ink-2);
+}
+
+.pickstep__pic {
+  width: 54px;
+  height: 54px;
+  flex: none;
+  border: 1px solid var(--line-2);
+  overflow: hidden;
+}
+
+.pickstep__txt {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pickstep__txt b {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 22px;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.pickstep__txt .hint {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.numgrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.numbtn {
+  min-height: 50px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ink-2);
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: border-color 0.16s var(--ease), color 0.16s var(--ease), background 0.16s var(--ease);
+}
+
+.numbtn:hover:not([disabled]) {
+  border-color: var(--bone);
+}
+
+.numbtn[disabled] {
+  color: var(--warm);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.numbtn[disabled] s {
+  text-decoration-thickness: 1px;
+}
+
+.numbtn.is-on {
+  border-color: var(--acid);
+  color: var(--acid);
+  background: rgba(204, 255, 63, 0.08);
+}
+
+.pick__foot--num {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  gap: 8px;
+  margin-top: 18px;
+  padding: 12px 0 calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, rgba(10, 10, 11, 0) 0%, var(--ink) 45%);
+}
+
+.pick__foot--num .btn {
+  flex: 1;
+  min-height: 48px;
+}
+
+@media (min-width: 640px) {
+  .numgrid {
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+  }
+}
+
 @media (min-width: 640px) {
   .pick__grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));

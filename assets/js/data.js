@@ -223,14 +223,24 @@ export async function whoAmI() {
   return data || null;
 }
 
-export async function claimPlayer(playerId) {
+export async function claimPlayer(playerId, shirtNumber = null) {
   if (state.demo) return playerId;
   const { error } = await sb().rpc('claim_player', {
     p_token: deviceToken(),
     p_player: playerId,
+    p_number: shirtNumber,
   });
   if (error) throw error;
   return playerId;
+}
+
+/** Dorsales ya ocupados (para no ofrecerlos en la elección). */
+export function takenNumbers(exceptId = null) {
+  const taken = new Set();
+  state.players.forEach((p) => {
+    if (p.id !== exceptId && p.shirt_number) taken.add(Number(p.shirt_number));
+  });
+  return taken;
 }
 
 export async function castVote(matchId, targetId, score) {
