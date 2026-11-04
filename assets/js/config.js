@@ -25,7 +25,7 @@ export const KEYS = LS;
 
 const DEFAULTS = {
   url: 'https://sarbskubgajtftfthanl.supabase.co',
-  key: '',
+  key: 'sb_publishable_7tZuZx45odD1c5Hqzl924g_8VB-DEiM',
   sharedEmail: 'vestuario@baiters.local',
   bucket: 'player-photos',
 };
