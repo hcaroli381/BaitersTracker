@@ -65,8 +65,8 @@ function renderLogin() {
   const cfg = getConfig();
   app.innerHTML = `<div class="gate">
     <div class="gate__art">
-      <span class="gate__kicker">BaitersTracker · Temporada 2026/27</span>
-      <h1 class="gate__title">EL<br>VESTUARIO<br><span class="outline">NO MIENTE</span></h1>
+      <span class="gate__kicker">Temporada 2026/27</span>
+      <h1 class="gate__title">BAITERS<br><span class="outline">TRACKER</span></h1>
       <p class="gate__note">No es suerte, es bait</p>
       <span class="gate__ghost" aria-hidden="true">BT</span>
     </div>
