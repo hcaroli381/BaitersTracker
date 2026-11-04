@@ -1,4 +1,4 @@
-import { isConfigured, getConfig, saveConfig } from './config.js';
+import { isConfigured, getConfig } from './config.js';
 import {
   state,
   esc,
@@ -24,7 +24,7 @@ let shellReady = false;
 boot();
 
 async function boot() {
-  if (!isConfigured()) return renderSetup();
+  if (!isConfigured()) return renderNoConfig();
 
   try {
     const s = await session();
@@ -37,45 +37,21 @@ async function boot() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Pantalla: configuración                                             */
+/* Pantalla: sin clave en config.js                                    */
 /* ------------------------------------------------------------------ */
 
-function renderSetup() {
-  const cfg = getConfig();
-  app.innerHTML = `<div class="gate">
-    <div class="gate__art">
-      <span class="gate__kicker">BaitersTracker · 2026/27</span>
-      <h1 class="gate__title">EL<br>VESTUARIO<br><span class="outline">NO MIENTE</span></h1>
-      <p class="gate__note">Notas, goles y MVP del grupo.</p>
-      <span class="gate__ghost" aria-hidden="true">BT</span>
-    </div>
+function renderNoConfig() {
+  app.innerHTML = `<div class="gate gate--fatal">
     <div class="gate__panel">
-      <p class="kicker">Primera conexión</p>
-      <h2 class="gate__h2">Conectar Supabase</h2>
-      <p class="hint">Supabase → <b>Settings → API Keys</b>. Pega la URL del proyecto y la clave pública. Se guardan solo en este navegador.</p>
-      <form id="setupForm" class="stack">
-        <label class="field"><span class="kicker">Project URL</span>
-          <input class="input" name="url" value="${esc(cfg.url)}" placeholder="https://xxxx.supabase.co" required></label>
-        <label class="field"><span class="kicker">Publishable key</span>
-          <input class="input" name="key" placeholder="sb_publishable_…" required autocomplete="off" spellcheck="false"></label>
-        <button class="btn btn--acid" type="submit">Guardar y continuar</button>
-      </form>
-      <p class="formerr" id="setupErr" hidden></p>
+      <p class="kicker">Falta un dato</p>
+      <h2 class="gate__h2">Sin conexión</h2>
+      <p class="hint">La clave pública del proyecto no está en <b>assets/js/config.js</b>. Pégala ahí (campo <b>key</b>) y recarga la página.</p>
+      <div class="stack">
+        <button class="btn btn--acid" type="button" id="retry">Reintentar</button>
+      </div>
     </div>
   </div>`;
-
-  app.querySelector('#setupForm').addEventListener('submit', (ev) => {
-    ev.preventDefault();
-    const f = ev.target;
-    const err = app.querySelector('#setupErr');
-    if (!saveConfig(f.url.value, f.key.value)) {
-      err.hidden = false;
-      err.textContent = 'Esa es la clave secreta del proyecto. Usa la publishable (sb_publishable_…).';
-      return;
-    }
-    location.hash = '#/inicio';
-    location.reload();
-  });
+  app.querySelector('#retry').addEventListener('click', () => location.reload());
 }
 
 /* ------------------------------------------------------------------ */
@@ -101,9 +77,6 @@ function renderLogin() {
         <button class="btn btn--acid" type="submit">Entrar</button>
       </form>
       <p class="formerr" id="loginErr" hidden></p>
-      <div class="gate__foot">
-        <button class="link link--mini" type="button" id="cfgBtn">Cambiar conexión</button>
-      </div>
     </div>
   </div>`;
 
@@ -128,11 +101,6 @@ function renderLogin() {
       btn.textContent = 'Entrar';
       f.password.select?.();
     }
-  });
-
-  app.querySelector('#cfgBtn').addEventListener('click', () => {
-    localStorage.removeItem('bt.supabase');
-    location.reload();
   });
 }
 
