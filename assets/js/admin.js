@@ -143,14 +143,22 @@ async function adminPanel() {
 /* ------------------------------------------------------------------ */
 
 function playersTab(players) {
+  const wildcards = players.filter((p) => p.can_vote === false).length;
+
   return `<form class="adminform" id="newPlayer">
       <p class="kicker">Añadir jugador</p>
       <div class="adminform__row">
         <input class="input" name="name" placeholder="Nombre y apellido" required maxlength="60" autocomplete="off">
+        <select class="input" name="kind" aria-label="Tipo de jugador">
+          <option value="player">Vota</option>
+          <option value="wildcard">Comodín</option>
+        </select>
         <button class="btn btn--acid" type="submit">Añadir</button>
       </div>
-      <p class="hint">Solo el nombre. Cada jugador elige su dorsal la primera vez que entra y queda reservado.</p>
+      <p class="hint">Solo el nombre. Cada jugador elige su dorsal al entrar. Los comodines juegan y reciben nota, pero no votan ni entran a elegir dorsal.</p>
     </form>
+
+    <p class="kicker">${players.length} jugadores · ${wildcards} comodines</p>
 
     <ul class="adminlist">
       ${players
@@ -161,6 +169,7 @@ function playersTab(players) {
               <span class="adminrow__name">${esc(p.name)} <b>${p.shirt_number ? pad2(p.shirt_number) : '—'}</b></span>
               <span class="adminrow__meta">
                 ${p.active === false ? '<span class="chip chip--warn">Inactivo</span>' : '<span class="chip chip--dim">Activo</span>'}
+                ${p.can_vote === false ? '<span class="chip chip--warn">Comodín</span>' : '<span class="chip chip--dim">Vota</span>'}
                 ${p.device_hash ? '<span class="chip chip--acid">Con móvil</span>' : '<span class="chip chip--dim">Sin móvil</span>'}
                 <span class="mono mono--dim">${rating(p.stats?.avg_rating)} · ${num(p.stats?.goals, 0)} G</span>
               </span>
@@ -169,6 +178,7 @@ function playersTab(players) {
               <button class="iconbtn" type="button" data-act="photo" title="Cambiar foto">Foto</button>
               <button class="iconbtn" type="button" data-act="number" title="Cambiar dorsal">#</button>
               <button class="iconbtn" type="button" data-act="rename" title="Renombrar">Nombre</button>
+              <button class="iconbtn" type="button" data-act="wildcard" title="Cambiar tipo">${p.can_vote === false ? 'Hacer votante' : 'Hacer comodín'}</button>
               <button class="iconbtn" type="button" data-act="toggle" title="Activar o desactivar">${p.active === false ? 'Activar' : 'Ocultar'}</button>
               ${p.device_hash ? `<button class="iconbtn" type="button" data-act="release" title="Liberar dispositivo">Liberar</button>` : ''}
               <button class="iconbtn iconbtn--danger" type="button" data-act="delete" title="Eliminar">Borrar</button>
@@ -189,10 +199,15 @@ function mountPlayers(root) {
     ev.preventDefault();
     const form = ev.target;
     const name = form.name.value.trim();
+    const wildcard = form.kind.value === 'wildcard';
     if (!name) return;
     try {
-      await adminRpc('admin_add_player', { p_pw: adminPassword(), p_name: name });
-      toast('Añadido. Al entrar, elegirá su dorsal');
+      await adminRpc('admin_add_player', {
+        p_pw: adminPassword(),
+        p_name: name,
+        p_can_vote: !wildcard,
+      });
+      toast(wildcard ? 'Comodín añadido' : 'Añadido. Al entrar, elegirá su dorsal');
       rerenderAdmin();
     } catch (e) {
       toast(errorMessage(e), 'error');
@@ -231,6 +246,13 @@ function mountPlayers(root) {
         break;
       case 'rename':
         askRename(player);
+        break;
+      case 'wildcard':
+        guard('admin_set_can_vote', {
+          p_pw: adminPassword(),
+          p_player: id,
+          p_can_vote: player.can_vote === false,
+        });
         break;
       case 'toggle':
         guard('admin_set_player_active', {
@@ -461,7 +483,7 @@ async function openLineup(match) {
         .map((p) => {
           const row = assigned.get(p.id);
           return `<li class="lineupEdit__row" data-player="${esc(p.id)}">
-            <span class="lineupEdit__name">${esc(p.name)}<b>${p.shirt_number ? pad2(p.shirt_number) : ''}</b></span>
+            <span class="lineupEdit__name">${esc(p.name)}<b>${p.shirt_number ? pad2(p.shirt_number) : ''}</b>${p.can_vote === false ? '<i class="lineupEdit__tag">comodín</i>' : ''}</span>
             <span class="lineupEdit__teams">
               <button class="iconbtn${row?.team === 'A' ? ' is-on' : ''}" type="button" data-team="A">A</button>
               <button class="iconbtn${row?.team === 'B' ? ' is-on' : ''}" type="button" data-team="B">B</button>
