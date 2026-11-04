@@ -139,13 +139,19 @@ function renderLogin() {
 /* ------------------------------------------------------------------ */
 
 function renderPick() {
-  const players = state.players.filter((p) => p.active !== false);
+  const players = state.players.filter((p) => p.active !== false && p.can_vote !== false);
+  const wildcards = state.players.filter((p) => p.active !== false && p.can_vote === false).length;
 
   app.innerHTML = `<div class="pick">
     <header class="pick__head">
       <p class="kicker">Un dispositivo, un jugador</p>
       <h1 class="pick__title">¿QUIÉN<br><span class="outline">ERES?</span></h1>
       <p class="hint">Toca tu nombre y elige dorsal. Este móvil quedará vinculado a ti para votar; el admin puede liberarlo si te equivocas.</p>
+      ${
+        wildcards
+          ? `<p class="hint">${wildcards === 1 ? 'Hay un comodín' : `Hay ${wildcards} comodines`} en la plantilla: juegan cuando faltamos, no votan y no salen en esta lista.</p>`
+          : ''
+      }
     </header>
     ${
       players.length
