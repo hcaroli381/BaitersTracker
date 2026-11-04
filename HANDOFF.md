@@ -3,7 +3,7 @@
 > Léelo entero antes de tocar nada. Recoge la dirección de arte acordada, las decisiones tomadas,
 > el estado real del backend y la lista de lo que falta.
 
-Última actualización: **4 de noviembre de 2026** · Entrega: **v1.3 (sin demo, dorsal propio, plantilla cargada)**
+Última actualización: **4 de noviembre de 2026** · Entrega: **v1.4 (comodines, sin demo, dorsal propio)**
 
 ---
 
@@ -99,6 +99,20 @@ Reglas de color:
 - La sesión de Supabase se persiste en el navegador: no se pide contraseña en cada visita.
 - **No hay modo demo.** Todo lo que se ve en producción son datos reales de la base.
 
+### 3.1 Dos tipos de jugador: votantes y comodines
+
+| Tipo | `can_vote` | Qué hace |
+| --- | --- | --- |
+| Votante | `true` | Fijo en la plantilla: vota cada partido y aparece en «¿Quién eres?». |
+| Comodín | `false` | Se le llama cuando falta alguien. Juega partidos sueltos y **no vota**. |
+
+- La regla vive en la base: `cast_vote` lanza «Los comodines no votan, solo juegan». No es una
+  restricción de interfaz que se pueda saltar llamando a la API.
+- Los comodines **no aparecen** en la lista de «¿Quién eres?», así que no vinculan móvil ni eligen
+  dorsal. El admin los mete en la alineación del partido que jueguen.
+- Se cambia de tipo en cualquier momento desde Admin (selector al crear, botón por fila después) mediante
+  `admin_set_can_vote`.
+
 ---
 
 ## 4. Backend real (verificado el 4/11/2026)
@@ -109,7 +123,7 @@ Proyecto: `sarbskubgajtftfthanl` (eu-west-3, Postgres 17, estado ACTIVE_HEALTHY)
 
 | Tabla | Columnas |
 | --- | --- |
-| `players` | `id uuid` PK, `name text` único, `shirt_number int` único, `device_hash text` único, `claimed bool`, `active bool` (true), `avatar_path text`, `created_at timestamptz` |
+| `players` | `id uuid` PK, `name text` único, `shirt_number int` único, `device_hash text` único, `claimed bool`, `active bool` (true), `can_vote bool` (true), `avatar_path text`, `created_at timestamptz` |
 | `matches` | `id uuid` PK, `played_on date`, `status text` (`open` por defecto / `closed`), `created_at` |
 | `appearances` | PK (`match_id`,`player_id`), `team text` (`A`/`B`), `goals int` |
 | `votes` | `id uuid` PK, único (`match_id`,`voter_id`,`target_id`), `score smallint` 1–10, `created_at` |
@@ -132,7 +146,9 @@ Proyecto: `sarbskubgajtftfthanl` (eu-west-3, Postgres 17, estado ACTIVE_HEALTHY)
 - Grupo: `me(p_token)`, `claim_player(p_token, p_player, p_number)`, `cast_vote(p_token, p_match, p_target, p_score)`.
 - `claim_player` fija nombre y dorsal en una sola operación: `p_number` va a `shirt_number` si el jugador aún
   no tenía uno, y un dorsal repetido devuelve el mensaje «Ese dorsal lo acaba de coger otro».
-- Admin (todas con `p_pw`): `admin_check`, `admin_add_player`, `admin_rename_player`,
+- `cast_vote` comprueba `can_vote` del votante y rechaza a los comodines.
+- Admin (todas con `p_pw`): `admin_check`, `admin_add_player(p_pw, p_name, p_can_vote)`,
+  `admin_set_can_vote(p_pw, p_player, p_can_vote)`, `admin_rename_player`,
   `admin_set_player_active`, `admin_set_number`, `admin_set_avatar`, `admin_delete_player`,
   `admin_release_player`, `admin_create_match`, `admin_set_match_date`, `admin_set_match_status`,
   `admin_set_lineup`, `admin_set_goals`, `admin_delete_match`, `admin_delete_vote`, `admin_set_vote`,
@@ -151,8 +167,8 @@ Proyecto: `sarbskubgajtftfthanl` (eu-west-3, Postgres 17, estado ACTIVE_HEALTHY)
 
 ### 4.5 Estado de los datos
 
-- **Jugadores: 10** — Hugo, Aarón, Gabriel, Pedro, David, Maksym, JuanRa, JuanJ, Adrián y Pablo.
-  Ninguno tiene dorsal todavía: lo elige cada uno al entrar por primera vez.
+- **Jugadores: 10** — Hugo, Aarón, Gabriel, Pedro, David, Maksym, JuanRa, Juan Jarillo, Adrián y Pablo.
+  Ninguno tiene dorsal todavía: lo elige cada uno al entrar por primera vez. Hoy **0 comodines**.
 - **Partidos: 0. Apariciones: 0. Votos: 0.** Ajustes: 1 fila.
 - Cuenta `vestuario@baiters.local`: existe y está confirmada. `private.admin`: 1 fila (contraseña de admin ya definida).
 
@@ -197,6 +213,12 @@ Siguiente paso natural: fotos y el primer partido.
 5. **Publicación**
    - Repositorio público `hcaroli381/BaitersTracker` y GitHub Pages activo en
      https://hcaroli381.github.io/BaitersTracker/ (rama `main`, raíz).
+6. **Comodines**
+   - `players.can_vote` + `cast_vote` que rechaza el voto de un comodín.
+   - `admin_add_player` pide el tipo y `admin_set_can_vote` lo cambia después.
+   - Admin: selector *Vota / Comodín* al crear, chips y botón por fila, marca «comodín» en el editor de
+     alineación.
+   - «¿Quién eres?» filtra a los comodines y avisa de cuántos hay en la plantilla.
 
 ---
 
@@ -207,10 +229,11 @@ Siguiente paso natural: fotos y el primer partido.
 3. Elegir nombre: queda fijado en ese móvil. Después, elegir dorsal (rejilla del 1 al 99 con los ocupados
    tachados; el número queda reservado). Si alguien se equivoca, el admin pulsa **Liberar**.
 4. **Admin** (pestaña 05) → contraseña de administrador → pestaña Jugadores: alta de jugadores **solo con
-   el nombre**. Cada uno elegirá dorsal al entrar por primera vez; el botón `#` del panel lo corrige.
+   el nombre**, eligiendo tipo (Vota / Comodín). Cada uno elegirá dorsal al entrar por primera vez; el
+   botón `#` del panel lo corrige.
 5. Subir foto a cada jugador (cámara del móvil o archivo).
-6. Partidos → crear el partido de hoy → **Alineación**: asignar A/B y goles → **Cerrar** cuando acabe la
-   votación.
+6. Partidos → crear el partido de hoy → **Alineación**: asignar A/B y goles (aquí entran los comodines) →
+   **Cerrar** cuando acabe la votación.
 7. Cada jugador entra, vota a los demás (1–10) y el ranking se actualiza solo.
 
 ---
@@ -287,6 +310,12 @@ Liberar un móvil concreto (si no hay admin a mano):
 update public.players set device_hash = null where name = 'Nombre';
 ```
 
+Convertir a alguien en comodín (o devolverlo a votante) sin pasar por el panel:
+
+```sql
+update public.players set can_vote = false where name = 'Nombre';
+```
+
 ---
 
 ## 10. Criterios para la siguiente instancia
@@ -298,6 +327,8 @@ update public.players set device_hash = null where name = 'Nombre';
 - El dorsal y el jugador se eligen una vez por dispositivo; el panel solo corrige excepciones.
 - **No reintroducir un modo demo**: si hace falta revisar el diseño sin datos, se levanta en local con la
   base de pruebas, no se añade un botón en producción.
+- **La regla de los comodines va en la base**: cualquier función nueva que cuente votos o votantes debe
+  respetar `can_vote`; no basta con ocultarlos en la interfaz.
 - Probar en móvil real: 360 px de ancho es el objetivo mínimo.
 - No introducir dependencias ni build si no es imprescindible: la simplicidad del despliegue en Pages es
   una decisión, no un descuido.
