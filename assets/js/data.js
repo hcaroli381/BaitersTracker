@@ -1,6 +1,5 @@
 import { sb, state, deviceToken, photoURL } from './core.js';
 import { getConfig } from './config.js';
-import { demoStore } from './demo.js';
 
 /* ------------------------------------------------------------------ */
 /* Sesión                                                              */
@@ -43,17 +42,6 @@ function decorate(player, stats) {
 }
 
 export async function loadCore() {
-  if (state.demo) {
-    const d = demoStore();
-    state.players = d.players.map((p) => ({ ...p, photo: '' }));
-    state.stats = d.players.map((p) => p.stats);
-    state.matches = d.matches
-      .map((m) => ({ ...m }))
-      .sort((a, b) => (a.played_on < b.played_on ? 1 : -1));
-    state.allowSelfVote = false;
-    return;
-  }
-
   const [players, stats, matches, settings] = await Promise.all([
     sb().from('players').select('*').order('name'),
     sb().from('player_stats').select('*'),
@@ -130,30 +118,6 @@ export function nextMatch() {
 }
 
 export async function matchDetail(id) {
-  if (state.demo) {
-    const d = demoStore();
-    const summary = d.matches.find((m) => m.id === id);
-    if (!summary) return null;
-    const lineup = d.lineups
-      .filter((l) => l.match_id === id)
-      .map((l) => ({ ...l, player: d.players.find((p) => p.id === l.player_id) }))
-      .sort((a, b) =>
-        a.team === b.team
-          ? a.player.name.localeCompare(b.player.name)
-          : a.team < b.team
-          ? -1
-          : 1
-      );
-    const scored = lineup.filter((l) => l.avg_score != null).sort((a, b) => b.avg_score - a.avg_score);
-    return {
-      summary,
-      lineup,
-      myVotes: new Map(),
-      votes: [],
-      mvp: summary.status === 'closed' && scored.length ? scored[0].player : null,
-    };
-  }
-
   const [summary, lineup, votes] = await Promise.all([
     sb().from('match_summary').select('*').eq('id', id).maybeSingle(),
     sb().from('player_match').select('*').eq('match_id', id),
@@ -189,17 +153,6 @@ export async function matchDetail(id) {
 }
 
 export async function playerHistory(playerId) {
-  if (state.demo) {
-    const d = demoStore();
-    return d.lineups
-      .filter((l) => l.player_id === playerId)
-      .map((l) => {
-        const match = d.matches.find((m) => m.id === l.match_id);
-        return { ...l, played_on: match?.played_on || null };
-      })
-      .sort((a, b) => (a.played_on < b.played_on ? 1 : -1));
-  }
-
   const { data, error } = await sb()
     .from('player_match')
     .select('match_id, player_id, team, goals, status, gf, ga, avg_score, votes')
@@ -217,14 +170,12 @@ export async function playerHistory(playerId) {
 /* ------------------------------------------------------------------ */
 
 export async function whoAmI() {
-  if (state.demo) return null;
   const { data, error } = await sb().rpc('me', { p_token: deviceToken() });
   if (error) throw error;
   return data || null;
 }
 
 export async function claimPlayer(playerId, shirtNumber = null) {
-  if (state.demo) return playerId;
   const { error } = await sb().rpc('claim_player', {
     p_token: deviceToken(),
     p_player: playerId,
@@ -244,7 +195,6 @@ export function takenNumbers(exceptId = null) {
 }
 
 export async function castVote(matchId, targetId, score) {
-  if (state.demo) throw new Error('Modo demo: las votaciones no se guardan');
   const { error } = await sb().rpc('cast_vote', {
     p_token: deviceToken(),
     p_match: matchId,
@@ -259,21 +209,18 @@ export async function castVote(matchId, targetId, score) {
 /* ------------------------------------------------------------------ */
 
 export async function adminRpc(name, args) {
-  if (state.demo) throw new Error('Modo demo: la administración está desactivada');
   const { data, error } = await sb().rpc(name, args);
   if (error) throw error;
   return data;
 }
 
 export async function checkAdmin(pw) {
-  if (state.demo) return true;
   const { data, error } = await sb().rpc('admin_check', { p_pw: pw });
   if (error) throw error;
   return Boolean(data);
 }
 
 export async function uploadPlayerPhoto(playerId, file, pw) {
-  if (state.demo) throw new Error('Modo demo: la subida está desactivada');
   const cfg = getConfig();
   const allowed = ['image/jpeg', 'image/png', 'image/webp'];
   if (!allowed.includes(file.type)) throw new Error('Formato no admitido: usa JPG, PNG o WebP');

@@ -1,4 +1,4 @@
-import { KEYS, isConfigured, getConfig, saveConfig } from './config.js';
+import { isConfigured, getConfig, saveConfig } from './config.js';
 import {
   state,
   esc,
@@ -24,10 +24,7 @@ let shellReady = false;
 boot();
 
 async function boot() {
-  state.demo = sessionStorage.getItem(KEYS.demo) === '1';
-
-  if (!state.demo && !isConfigured()) return renderSetup();
-  if (state.demo) return start();
+  if (!isConfigured()) return renderSetup();
 
   try {
     const s = await session();
@@ -55,31 +52,27 @@ function renderSetup() {
     <div class="gate__panel">
       <p class="kicker">Primera conexión</p>
       <h2 class="gate__h2">Conectar Supabase</h2>
-      <p class="hint">Pega la URL del proyecto y la clave pública (anon). Se guardan solo en este navegador.</p>
+      <p class="hint">Supabase → <b>Settings → API Keys</b>. Pega la URL del proyecto y la clave pública. Se guardan solo en este navegador.</p>
       <form id="setupForm" class="stack">
         <label class="field"><span class="kicker">Project URL</span>
           <input class="input" name="url" value="${esc(cfg.url)}" placeholder="https://xxxx.supabase.co" required></label>
-        <label class="field"><span class="kicker">Anon / publishable key</span>
-          <input class="input" name="key" placeholder="eyJhbGciOi..." required autocomplete="off" spellcheck="false"></label>
+        <label class="field"><span class="kicker">Publishable key</span>
+          <input class="input" name="key" placeholder="sb_publishable_…" required autocomplete="off" spellcheck="false"></label>
         <button class="btn btn--acid" type="submit">Guardar y continuar</button>
       </form>
       <p class="formerr" id="setupErr" hidden></p>
-      <div class="gate__foot">
-        <button class="link" type="button" id="demoBtn">Ver demo del diseño <span aria-hidden="true">→</span></button>
-      </div>
     </div>
   </div>`;
 
   app.querySelector('#setupForm').addEventListener('submit', (ev) => {
     ev.preventDefault();
     const f = ev.target;
-    saveConfig(f.url.value, f.key.value);
-    location.hash = '#/inicio';
-    location.reload();
-  });
-
-  app.querySelector('#demoBtn').addEventListener('click', () => {
-    sessionStorage.setItem(KEYS.demo, '1');
+    const err = app.querySelector('#setupErr');
+    if (!saveConfig(f.url.value, f.key.value)) {
+      err.hidden = false;
+      err.textContent = 'Esa es la clave secreta del proyecto. Usa la publishable (sb_publishable_…).';
+      return;
+    }
     location.hash = '#/inicio';
     location.reload();
   });
@@ -110,7 +103,6 @@ function renderLogin() {
       </form>
       <p class="formerr" id="loginErr" hidden></p>
       <div class="gate__foot">
-        <button class="link" type="button" id="demoBtn">Ver demo del diseño <span aria-hidden="true">→</span></button>
         <button class="link link--mini" type="button" id="cfgBtn">Cambiar conexión</button>
       </div>
     </div>
@@ -134,12 +126,6 @@ function renderLogin() {
       btn.disabled = false;
       btn.textContent = 'Entrar';
     }
-  });
-
-  app.querySelector('#demoBtn').addEventListener('click', () => {
-    sessionStorage.setItem(KEYS.demo, '1');
-    location.hash = '#/inicio';
-    location.reload();
   });
 
   app.querySelector('#cfgBtn').addEventListener('click', () => {
@@ -293,14 +279,12 @@ async function start() {
     return renderFatal(err);
   }
 
-  if (!state.demo) {
-    try {
-      state.me = await whoAmI();
-    } catch {
-      state.me = null;
-    }
-    if (!state.me) return renderPick();
+  try {
+    state.me = await whoAmI();
+  } catch {
+    state.me = null;
   }
+  if (!state.me) return renderPick();
 
   renderShell();
 }
@@ -335,7 +319,7 @@ function renderShell() {
       </nav>
       <div class="rail__foot">
         ${meChip()}
-        <button class="btn btn--ghost btn--sm" type="button" data-out>${state.demo ? 'Salir de la demo' : 'Salir'}</button>
+        <button class="btn btn--ghost btn--sm" type="button" data-out>Salir</button>
       </div>
     </aside>
 
@@ -343,7 +327,6 @@ function renderShell() {
       <header class="topbar">
         <a class="topbar__brand" href="${href('inicio')}">BAITERS<em>TRACKER</em></a>
         <span class="topbar__right">
-          ${state.demo ? '<span class="chip chip--acid">Demo</span>' : ''}
           ${meChip(true)}
         </span>
       </header>
@@ -361,12 +344,6 @@ function renderShell() {
   </div>`;
 
   app.querySelector('[data-out]')?.addEventListener('click', async () => {
-    if (state.demo) {
-      sessionStorage.removeItem(KEYS.demo);
-      location.hash = '#/inicio';
-      location.reload();
-      return;
-    }
     await signOut();
     location.reload();
   });
