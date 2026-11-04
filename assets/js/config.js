@@ -1,13 +1,17 @@
 /**
  * BaitersTracker — configuración de conexión.
  *
- * SUPABASE_KEY es la clave pública (anon / publishable) del proyecto.
+ * SUPABASE_KEY es la clave PÚBLICA del proyecto: la «publishable»
+ * (sb_publishable_…) o, en proyectos antiguos, la «anon» (eyJhbGciOi…).
  * Es pública por diseño: la seguridad real vive en las políticas RLS y en
  * las funciones RPC (contraseña de admin + token de dispositivo).
  *
- * Puedes rellenarla aquí o dejarla vacía: en ese caso la app pide la clave
- * una vez y la guarda en el navegador (localStorage), que es lo recomendable
- * si el repositorio va a ser público en GitHub.
+ * Si la dejas vacía, cada navegador tendrá que pegarla una vez (la app la
+ * guarda en localStorage). Si la pones aquí, todos los móviles del grupo
+ * entran directamente: es cómodo y sigue siendo seguro con esta clave.
+ *
+ * NUNCA pongas aquí la clave secreta (sb_secret_…) ni la antigua
+ * service_role: se saltan RLS por completo. La app las ignora.
  */
 
 const LS = {
@@ -27,6 +31,11 @@ const DEFAULTS = {
   bucket: 'player-photos',
 };
 
+/** Clave elevada: se salta RLS, así que nunca debe acabar en el navegador. */
+export function isSecretKey(key) {
+  return /^sb_secret_/i.test(String(key || '').trim());
+}
+
 export function getConfig() {
   let overrides = {};
   try {
@@ -34,18 +43,28 @@ export function getConfig() {
   } catch {
     overrides = {};
   }
+  const stored = isSecretKey(overrides.key) ? '' : overrides.key;
   return {
     ...DEFAULTS,
     url: overrides.url || DEFAULTS.url,
-    key: overrides.key || DEFAULTS.key,
+    key: stored || DEFAULTS.key,
   };
 }
 
+/** Guarda la conexión. Devuelve false si la clave era una secret key. */
 export function saveConfig(url, key) {
+  const value = String(key || '').trim();
+  if (isSecretKey(value)) {
+    console.warn(
+      'BaitersTracker: esa es la clave secreta del proyecto. Usa la publishable (sb_publishable_…); no se ha guardado.'
+    );
+    return false;
+  }
   localStorage.setItem(
     'bt.supabase',
-    JSON.stringify({ url: String(url || '').trim().replace(/\/+$/, ''), key: String(key || '').trim() })
+    JSON.stringify({ url: String(url || '').trim().replace(/\/+$/, ''), key: value })
   );
+  return true;
 }
 
 export function clearConfig() {
