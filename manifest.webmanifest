@@ -1,0 +1,16 @@
+{
+  "name": "BaitersTracker",
+  "short_name": "Baiters",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#10110f",
+  "theme_color": "#10110f",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
