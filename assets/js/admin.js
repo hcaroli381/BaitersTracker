@@ -147,9 +147,9 @@ function playersTab(players) {
       <p class="kicker">Añadir jugador</p>
       <div class="adminform__row">
         <input class="input" name="name" placeholder="Nombre y apellido" required maxlength="60" autocomplete="off">
-        <input class="input input--num" name="number" type="number" min="1" max="99" placeholder="Dorsal" inputmode="numeric">
         <button class="btn btn--acid" type="submit">Añadir</button>
       </div>
+      <p class="hint">Solo el nombre. Cada jugador elige su dorsal la primera vez que entra y queda reservado.</p>
     </form>
 
     <ul class="adminlist">
@@ -189,12 +189,10 @@ function mountPlayers(root) {
     ev.preventDefault();
     const form = ev.target;
     const name = form.name.value.trim();
-    const number = form.number.value ? Number(form.number.value) : null;
     if (!name) return;
     try {
-      const id = await adminRpc('admin_add_player', { p_pw: adminPassword(), p_name: name });
-      if (number) await adminRpc('admin_set_number', { p_pw: adminPassword(), p_player: id, p_number: number });
-      toast('Jugador añadido');
+      await adminRpc('admin_add_player', { p_pw: adminPassword(), p_name: name });
+      toast('Añadido. Al entrar, elegirá su dorsal');
       rerenderAdmin();
     } catch (e) {
       toast(errorMessage(e), 'error');
