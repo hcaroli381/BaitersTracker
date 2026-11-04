@@ -94,11 +94,10 @@ function renderLogin() {
     <div class="gate__panel">
       <p class="kicker">Acceso del grupo</p>
       <h2 class="gate__h2">Entrar</h2>
+      <p class="hint">Solo hace falta la contraseña del vestuario. La cuenta ya la lleva la app.</p>
       <form id="loginForm" class="stack">
-        <label class="field"><span class="kicker">Correo del grupo</span>
-          <input class="input" name="email" type="email" value="${esc(cfg.sharedEmail)}" autocomplete="username" required></label>
         <label class="field"><span class="kicker">Contraseña</span>
-          <input class="input" name="password" type="password" autocomplete="current-password" required></label>
+          <input class="input" name="password" type="password" autocomplete="current-password" enterkeyhint="go" required></label>
         <button class="btn btn--acid" type="submit">Entrar</button>
       </form>
       <p class="formerr" id="loginErr" hidden></p>
@@ -109,6 +108,8 @@ function renderLogin() {
   </div>`;
 
   const err = app.querySelector('#loginErr');
+  const pass = app.querySelector('#loginForm input[name="password"]');
+  if (pass) pass.focus({ preventScroll: true });
 
   app.querySelector('#loginForm').addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -118,13 +119,14 @@ function renderLogin() {
     btn.textContent = 'Entrando…';
     err.hidden = true;
     try {
-      await signIn(f.email.value.trim(), f.password.value);
+      await signIn(cfg.sharedEmail, f.password.value);
       await boot();
     } catch (e) {
       err.hidden = false;
       err.textContent = errorMessage(e);
       btn.disabled = false;
       btn.textContent = 'Entrar';
+      f.password.select?.();
     }
   });
 
