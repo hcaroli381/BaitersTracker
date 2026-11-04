@@ -1,90 +1,24 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#10110f">
-  <meta name="description" content="BaitersTracker — estadísticas, partidos y valoraciones de los Baiters.">
-  <link rel="manifest" href="manifest.webmanifest">
-  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css">
-  <title>BAITERS / TRACKER</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0b">
+<title>BaitersTracker</title>
+<meta name="description" content="BaitersTracker — notas, goles, MVP y clasificación del vestuario.">
+<link rel="icon" href="assets/img/mark.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/app.css">
 </head>
 <body>
-  <div class="grain"></div>
-  <header class="topbar">
-    <a class="brand" href="#" aria-label="BaitersTracker inicio">
-      <span class="brand-mark">B<span>.</span></span>
-      <span class="brand-name">BAITERS<span>/</span>TRACKER</span>
-    </a>
-    <div class="top-right"><span class="live-dot"></span><span>CLUB PRIVADO</span><button id="admin-open" class="admin-link">ADMIN ↗</button></div>
-  </header>
-
-  <main>
-    <section class="hero">
-      <div class="hero-copy">
-        <p class="eyebrow">TEMPORADA <span id="season-year">26/27</span> · REGISTRO OFICIAL</p>
-        <h1>EL FÚTBOL<br>NO <em>MIENTE.</em></h1>
-        <p class="hero-sub">Cada partido cuenta. Cada voto pesa.<br>Bienvenido al archivo de los Baiters.</p>
-      </div>
-      <div class="hero-stamp"><span>BT</span><small>EST.<br>2026</small></div>
-      <div class="hero-index">01 <i>—</i> 04</div>
-    </section>
-
-    <nav class="tabs" aria-label="Secciones">
-      <button class="tab active" data-view="ranking">01 <span>RANKING</span></button>
-      <button class="tab" data-view="matches">02 <span>PARTIDOS</span></button>
-      <button class="tab" data-view="players">03 <span>JUGADORES</span></button>
-      <button class="tab" data-view="vote">04 <span>VOTAR</span></button>
-    </nav>
-
-    <section id="view-ranking" class="view active">
-      <div class="section-head"><div><p class="eyebrow">LA TABLA DE LA VERDAD</p><h2>CLASIFICACIÓN<span class="acid">.</span></h2></div><span class="section-count" id="ranking-count">— JUGADORES</span></div>
-      <div class="ranking-tools"><label for="sort-by">ORDENAR POR</label><select id="sort-by"><option value="rating">Nota media</option><option value="goals">Goles</option><option value="mvps">MVPs</option><option value="wins">Victorias</option><option value="games">Partidos</option></select></div>
-      <div id="ranking-list" class="ranking-list"><div class="loading-line">CARGANDO DATOS<span>...</span></div></div>
-    </section>
-
-    <section id="view-matches" class="view">
-      <div class="section-head"><div><p class="eyebrow">HISTORIAL DE ENFRENTAMIENTOS</p><h2>PARTIDOS<span class="acid">.</span></h2></div><span class="section-count" id="match-count">— REGISTROS</span></div>
-      <div id="matches-list" class="matches-list"><div class="loading-line">CARGANDO DATOS<span>...</span></div></div>
-    </section>
-
-    <section id="view-players" class="view">
-      <div class="section-head"><div><p class="eyebrow">LAS CARAS DEL VESTUARIO</p><h2>PLANTILLA<span class="acid">.</span></h2></div><span class="section-count" id="player-count">— FICHAS</span></div>
-      <div id="players-grid" class="players-grid"><div class="loading-line">CARGANDO DATOS<span>...</span></div></div>
-    </section>
-
-    <section id="view-vote" class="view">
-      <div class="section-head"><div><p class="eyebrow">EL JUICIO DEL VESTUARIO</p><h2>VOTACIONES<span class="acid">.</span></h2></div><span class="section-count">1 — 10</span></div>
-      <div class="vote-panel">
-        <div class="vote-intro"><span class="big-number">10<span>/</span>10</span><p>Las notas son públicas.<br>Que cada uno responda por la suya.</p></div>
-        <div id="identity-box" class="identity-box"></div>
-        <div id="vote-content"></div>
-      </div>
-    </section>
-
-    <footer class="footer"><div class="footer-brand">BAITERS<span>®</span></div><p>HECHO PARA EL VESTUARIO. NO PARA LA PRENSA.</p><span class="footer-code">BT—001 / ALGECIRAS</span></footer>
-  </main>
-
-  <dialog id="admin-dialog" class="modal">
-    <form method="dialog" class="modal-head"><div><p class="eyebrow">ZONA RESTRINGIDA</p><h2>ADMIN<span class="acid">.</span></h2></div><button class="close" aria-label="Cerrar">×</button></form>
-    <div id="admin-login" class="modal-body"><label>CONTRASEÑA DE ADMINISTRACIÓN<input id="admin-password" type="password" autocomplete="current-password" placeholder="Contraseña"></label><button id="admin-login-btn" class="primary-btn">ENTRAR ↗</button><p id="admin-error" class="error-text"></p></div>
-    <div id="admin-panel" class="modal-body hidden">
-      <div class="admin-tabs"><button class="active" data-admin-tab="players">JUGADORES</button><button data-admin-tab="matches">PARTIDOS</button></div>
-      <div id="admin-players">
-        <div class="admin-create"><input id="new-player-name" maxlength="24" placeholder="Nombre del jugador"><button id="add-player" class="primary-btn">AÑADIR +</button></div>
-        <div id="admin-player-list"></div>
-      </div>
-      <div id="admin-matches" class="hidden">
-        <div class="admin-create"><input id="new-match-date" type="date"><button id="add-match" class="primary-btn">CREAR PARTIDO +</button></div>
-        <div id="admin-match-list"></div>
-      </div>
-      <button id="admin-logout" class="logout-btn">CERRAR SESIÓN</button>
-    </div>
-  </dialog>
-  <div id="toast" class="toast" role="status"></div>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8"></script>
-  <script src="config.js"></script>
-  <script src="app.js"></script>
+<div id="app">
+  <div class="boot">
+    <span class="boot__mark">BT</span>
+    <span class="boot__label">Cargando vestuario</span>
+  </div>
+</div>
+<script type="module" src="assets/js/app.js"></script>
 </body>
 </html>
