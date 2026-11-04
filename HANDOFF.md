@@ -3,7 +3,7 @@
 > Léelo entero antes de tocar nada. Recoge la dirección de arte acordada, las decisiones tomadas,
 > el estado real del backend y la lista de lo que falta.
 
-Última actualización: **4 de noviembre de 2026** · Entrega: **v1.2 (Dark Editorial + acceso con dorsal + fotos)**
+Última actualización: **4 de noviembre de 2026** · Entrega: **v1.3 (sin demo, dorsal propio, plantilla cargada)**
 
 ---
 
@@ -90,13 +90,14 @@ Reglas de color:
 | Admin | Contraseña propia (bcrypt en `private.admin`, validada por `private.assert_admin`) | Gestionar plantilla, partidos, fotos y ajustes |
 
 - **La contraseña del grupo no está en el repositorio.** Se gestiona en Supabase → Authentication → Users.
-- **La contraseña de admin tampoco.** Se introduce en la app y se guarda en `sessionStorage` (solo esa
-  pestaña). Si se pierde, se resetea por SQL (ver §9).
+- **La contraseña de admin tampoco.** Se introduce en la pestaña **05 · Admin** de la app y se guarda en
+  `sessionStorage` (solo esa pestaña). Si se pierde, se resetea por SQL (ver §9).
 - El token de dispositivo hace que cada móvil vote siempre como el mismo jugador. `claim_player` lo
   vincula una sola vez; el admin puede liberarlo con `admin_release_player`.
 - **Dorsales:** los elige cada jugador en su primer acceso (paso 2, tras elegir su nombre). El dorsal queda
   reservado por la restricción `unique` de `shirt_number`; el admin solo lo corrige desde el panel.
 - La sesión de Supabase se persiste en el navegador: no se pide contraseña en cada visita.
+- **No hay modo demo.** Todo lo que se ve en producción son datos reales de la base.
 
 ---
 
@@ -143,17 +144,19 @@ Proyecto: `sarbskubgajtftfthanl` (eu-west-3, Postgres 17, estado ACTIVE_HEALTHY)
 
 - RLS activo en las cinco tablas, con políticas **solo** `SELECT` para `authenticated`. Ninguna escritura
   directa: todo pasa por RPC.
-- `EXECUTE` revocado a `anon` en todas las funciones (comprobado también en la nueva `claim_player`).
+- `EXECUTE` revocado a `anon` en todas las funciones (comprobado una a una: las 21 devuelven `false`).
 - Bucket `player-photos`: público de lectura, límite 5 MB, solo `image/jpeg`, `image/png`, `image/webp`.
 - Nuevas políticas de Storage para `authenticated`: `player_photos_insert/update/delete`, limitadas a
   `bucket_id = 'player-photos'`.
 
 ### 4.5 Estado de los datos
 
-- **Jugadores: 0. Partidos: 0. Apariciones: 0. Votos: 0.** Ajustes: 1 fila.
-- Cuenta `vestuario@baiters.local`: existe y está confirmada.
+- **Jugadores: 10** — Hugo, Aarón, Gabriel, Pedro, David, Maksym, JuanRa, JuanJ, Adrián y Pablo.
+  Ninguno tiene dorsal todavía: lo elige cada uno al entrar por primera vez.
+- **Partidos: 0. Apariciones: 0. Votos: 0.** Ajustes: 1 fila.
+- Cuenta `vestuario@baiters.local`: existe y está confirmada. `private.admin`: 1 fila (contraseña de admin ya definida).
 
-Es decir: el backend está listo y vacío. La primera tarea real es cargar la plantilla y el primer partido.
+Siguiente paso natural: fotos y el primer partido.
 
 ---
 
@@ -172,9 +175,11 @@ Es decir: el backend está listo y vacío. La primera tarea real es cargar la pl
 1. **Seguridad**
    - Vistas a `security_invoker` + `REVOKE` de `anon`: ya no se puede leer nada sin sesión.
    - Políticas de Storage para subir y reemplazar fotos con la sesión del grupo.
+   - `config.js` rechaza la clave secreta (`sb_secret_…`): si se pega, no se guarda y avisa en el formulario.
 2. **Backend**
    - `players.shirt_number` (único, 1–99) y RPC `admin_set_number`.
    - `claim_player` pasa a `(p_token, p_player, p_number)` y reserva el dorsal elegido en la misma llamada.
+   - Cargados los 10 jugadores iniciales (solo nombre; dorsal libre para que lo elijan ellos).
 3. **Frontend nuevo, de cero** (sustituye al starter)
    - Sistema visual Dark Editorial completo, repartido en `app.css`, `layout.css`, `views.css`,
      `detail.css` y `admin.css` (se carga en ese orden desde `index.html`).
@@ -185,9 +190,11 @@ Es decir: el backend está listo y vacío. La primera tarea real es cargar la pl
    - Panel de admin: alta de jugadores (solo nombre), renombrar, activar, liberar móvil, corregir dorsal,
      borrar, **subida de foto desde móvil/PC**, crear partido, fecha, abrir/cerrar, editor de alineación
      con equipos y goles, autovoto y cambio de contraseña de admin.
-   - Modo demo (`Ver demo del diseño`) con datos deterministas para revisar la estética sin tocar la base.
-   - Estados vacíos diseñados (hoy la base está vacía, así que son lo primero que se ve en real).
-4. **Publicación**
+   - Estados vacíos diseñados: mientras no haya partidos, la app se ve limpia en lugar de rota.
+4. **Modo demo retirado**
+   - Se eliminaron el botón «Ver demo del diseño», `assets/js/demo.js` y todas las ramas de demo de
+     `app.js`, `data.js`, `core.js` y `config.js`. La app solo funciona con la base real.
+5. **Publicación**
    - Repositorio público `hcaroli381/BaitersTracker` y GitHub Pages activo en
      https://hcaroli381.github.io/BaitersTracker/ (rama `main`, raíz).
 
@@ -195,12 +202,12 @@ Es decir: el backend está listo y vacío. La primera tarea real es cargar la pl
 
 ## 6. Cómo se usa (para el usuario)
 
-1. Abrir la web → introducir URL y clave `anon` de Supabase (una vez por navegador).
+1. Abrir la web. Si `config.js` no lleva la clave, introducir URL y clave **publishable** una vez por navegador.
 2. Entrar con `vestuario@baiters.local` + contraseña del grupo.
 3. Elegir nombre: queda fijado en ese móvil. Después, elegir dorsal (rejilla del 1 al 99 con los ocupados
    tachados; el número queda reservado). Si alguien se equivoca, el admin pulsa **Liberar**.
-4. **Admin** → contraseña de administrador → pestaña Jugadores: añadir a los 12 del grupo **solo con el nombre**.
-   Cada uno elegirá dorsal al entrar por primera vez; el botón `#` del panel lo corrige si hace falta.
+4. **Admin** (pestaña 05) → contraseña de administrador → pestaña Jugadores: alta de jugadores **solo con
+   el nombre**. Cada uno elegirá dorsal al entrar por primera vez; el botón `#` del panel lo corrige.
 5. Subir foto a cada jugador (cámara del móvil o archivo).
 6. Partidos → crear el partido de hoy → **Alineación**: asignar A/B y goles → **Cerrar** cuando acabe la
    votación.
@@ -210,13 +217,14 @@ Es decir: el backend está listo y vacío. La primera tarea real es cargar la pl
 
 ## 7. Publicación
 
-- **Web:** https://hcaroli381.github.io/BaitersTracker/ — GitHub Pages activo desde el 4/11/2026
-  (Settings → Pages → *Deploy from a branch* → `main` / `(root)`).
+- **Web:** https://hcaroli381.github.io/BaitersTracker/ — GitHub Pages activo (Settings → Pages →
+  *Deploy from a branch* → `main` / `(root)`).
 - **Repositorio:** https://github.com/hcaroli381/BaitersTracker (público, rama `main`).
-- No hay paso de build ni dependencias npm. `index.html` carga `@supabase/supabase-js` desde jsDelivr y
-  las tipografías desde Google Fonts: requieren conexión, no hay copia local.
-- La clave `anon` puede ir en `assets/js/config.js` (es pública por diseño, la seguridad está en RLS) o
-  dejarse vacía para que cada navegador la introduzca una vez.
+- No hay paso de build ni dependencias npm. `index.html` carga `@supabase/supabase-js` desde jsDelivr
+  (versión 2.118 o superior: las anteriores no entendían las claves publishable) y las tipografías desde
+  Google Fonts: requieren conexión, no hay copia local.
+- La clave pública puede ir en `assets/js/config.js` (`key`) o dejarse vacía para que cada navegador la
+  introduzca una vez. Es pública por diseño; la seguridad está en RLS y en las RPC.
 - Para republicar cambios basta con hacer commit en `main`: Pages reconstruye en un minuto.
 
 ---
@@ -224,9 +232,10 @@ Es decir: el backend está listo y vacío. La primera tarea real es cargar la pl
 ## 8. Lo que falta (en orden)
 
 1. **Probar en dos móviles reales**: acceso, elección de nombre y dorsal, y que el dorsal quede bloqueado.
-2. **Cargar datos reales**: los 12 nombres desde el panel y el primer partido.
-3. **Fotos**: subir las de todos; hoy solo se verá la placa de vestuario.
-4. **Cerrar un partido de prueba** y comprobar el MVP en Inicio y el ranking por nota media.
+2. **Fotos** de los 10 jugadores (hoy se ve la placa de vestuario con iniciales).
+3. **Primer partido**: crearlo, alinear, votar y cerrarlo para ver el MVP y el ranking con datos.
+4. **Cerrar el registro** en Supabase (Authentication → Providers → Email → *Allow new users to sign up*
+   desactivado) y subir el mínimo de contraseña.
 
 ### Deuda conocida / mejoras pendientes
 
@@ -234,6 +243,7 @@ Es decir: el backend está listo y vacío. La primera tarea real es cargar la pl
   todavía (corregir una nota a mano requiere SQL o añadir pantalla).
 - **Cambio de dorsal**: un jugador no puede cambiarse el número a sí mismo; solo el admin. Si se quiere
   permitir, hay que añadir RPC `change_my_number` con la misma validación de unicidad.
+- **Cambio de contraseña del grupo**: no hay interfaz; se hace en Supabase → Authentication → Users.
 - **Borrado de fotos antiguas**: al cambiar de foto se sube un archivo nuevo y el anterior queda en el
   bucket. Conviene limpiar por política o desde el panel.
 - **Posición del jugador** (portero/defensa/…): no está en el esquema. Si se quiere mostrar, hay que
@@ -245,8 +255,7 @@ Es decir: el backend está listo y vacío. La primera tarea real es cargar la pl
   falta `supabase.channel(...)` sobre `votes` y `matches`.
 - **PWA / icono en el móvil**: no implementado.
 - **Verificación visual**: en este entorno no hay navegador automatizado, así que la interfaz está
-  verificada por revisión de código y sintaxis, no con capturas. Revisar en móvil real antes de dar por
-  cerrada la parte visual.
+  verificada por revisión de código, sintaxis y HTTP, no con capturas. Revisar en móvil real.
 - **Vistas y `security_invoker`**: si en el futuro se crea una vista nueva, hay que repetir
   `set (security_invoker = true)` y revocar `anon`, o volverá a haber fuga de datos.
 
@@ -254,7 +263,7 @@ Es decir: el backend está listo y vacío. La primera tarea real es cargar la pl
 
 ## 9. Mantenimiento (SQL útil)
 
-Resetear la contraseña de admin si se pierde:
+Resetear la contraseña de admin si se pierde (ejecutar en el SQL Editor de Supabase, cambiando el texto):
 
 ```sql
 update private.admin
@@ -287,6 +296,8 @@ update public.players set device_hash = null where name = 'Nombre';
 - Cualquier acción de escritura va por RPC. No añadir políticas de escritura a las tablas.
 - Las fotos viven en Storage; el histórico solo guarda la ruta (`avatar_path`).
 - El dorsal y el jugador se eligen una vez por dispositivo; el panel solo corrige excepciones.
+- **No reintroducir un modo demo**: si hace falta revisar el diseño sin datos, se levanta en local con la
+  base de pruebas, no se añade un botón en producción.
 - Probar en móvil real: 360 px de ancho es el objetivo mínimo.
 - No introducir dependencias ni build si no es imprescindible: la simplicidad del despliegue en Pages es
   una decisión, no un descuido.
