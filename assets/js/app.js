@@ -67,13 +67,12 @@ function renderLogin() {
     <div class="gate__art">
       <span class="gate__kicker">BaitersTracker · Temporada 2026/27</span>
       <h1 class="gate__title">EL<br>VESTUARIO<br><span class="outline">NO MIENTE</span></h1>
-      <p class="gate__note">Cada nota cuenta. Cada gol, también.</p>
+      <p class="gate__note">No es suerte, es bait</p>
       <span class="gate__ghost" aria-hidden="true">BT</span>
     </div>
     <div class="gate__panel">
       <p class="kicker">Acceso del grupo</p>
       <h2 class="gate__h2">Entrar</h2>
-      <p class="hint">Solo hace falta la contraseña del vestuario. La cuenta ya la lleva la app.</p>
       <form id="loginForm" class="stack">
         <label class="field"><span class="kicker">Contraseña</span>
           <input class="input" name="password" type="password" autocomplete="current-password" enterkeyhint="go" required></label>
