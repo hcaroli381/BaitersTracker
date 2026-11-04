@@ -10,7 +10,7 @@ import {
   parseRoute,
   href,
 } from './core.js';
-import { signIn, signOut, session, loadCore, whoAmI, claimPlayer, playerById } from './data.js';
+import { signIn, signOut, session, loadCore, whoAmI, claimPlayer, takenNumbers, playerById } from './data.js';
 import { home, ranking, matches, matchView, playerView, squad } from './views.js';
 import { adminView } from './admin.js';
 
@@ -159,7 +159,7 @@ function renderPick() {
     <header class="pick__head">
       <p class="kicker">Un dispositivo, un jugador</p>
       <h1 class="pick__title">¿QUIÉN<br><span class="outline">ERES?</span></h1>
-      <p class="hint">Elige tu nombre. Este móvil quedará vinculado a ti para votar; el admin puede liberarlo si te equivocas.</p>
+      <p class="hint">Toca tu nombre y elige dorsal. Este móvil quedará vinculado a ti para votar; el admin puede liberarlo si te equivocas.</p>
     </header>
     ${
       players.length
@@ -183,28 +183,94 @@ function renderPick() {
   </div>`;
 
   app.querySelectorAll('[data-pick]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => {
       if (btn.querySelector('.pickcard__tag')?.textContent === 'Ocupado') {
         toast('Ese jugador ya está cogido en otro móvil', 'error');
         return;
       }
-      btn.disabled = true;
-      try {
-        await claimPlayer(btn.dataset.pick);
-        state.me = btn.dataset.pick;
-        toast('Listo. Ya puedes votar.');
-        shellReady = false;
-        renderShell();
-      } catch (e) {
-        btn.disabled = false;
-        toast(errorMessage(e), 'error');
-      }
+      const player = players.find((p) => p.id === btn.dataset.pick);
+      if (player) renderNumberStep(player);
     });
   });
 
   app.querySelector('#pickOut').addEventListener('click', async () => {
     await signOut();
     location.reload();
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Pantalla: elegir dorsal                                             */
+/* ------------------------------------------------------------------ */
+
+function renderNumberStep(player) {
+  const taken = takenNumbers(player.id);
+  const numbers = Array.from({ length: 99 }, (_, i) => i + 1);
+  let chosen = null;
+
+  app.innerHTML = `<div class="pick pick--num">
+    <header class="pick__head">
+      <p class="kicker">Paso 2 de 2 · tu dorsal</p>
+      <h1 class="pick__title">TU<br><span class="outline">DORSAL</span></h1>
+      <div class="pickstep">
+        <span class="pickstep__pic">${photoBlock(player, 'ph--chip')}</span>
+        <span class="pickstep__txt">
+          <b>${esc(player.name)}</b>
+          <span class="hint">Toca un número libre. Quedará a tu nombre y nadie más podrá cogerlo.</span>
+        </span>
+      </div>
+    </header>
+    <div class="numgrid" id="numGrid">
+      ${numbers
+        .map((n) =>
+          taken.has(n)
+            ? `<button class="numbtn" type="button" disabled aria-label="Dorsal ${n} ocupado"><s>${pad2(n)}</s></button>`
+            : `<button class="numbtn" type="button" data-num="${n}">${pad2(n)}</button>`
+        )
+        .join('')}
+    </div>
+    <div class="pick__foot pick__foot--num">
+      <button class="btn btn--ghost" type="button" id="numBack">Cambiar jugador</button>
+      <button class="btn btn--acid" type="button" id="numGo" disabled>Elige un número</button>
+    </div>
+  </div>`;
+
+  const go = app.querySelector('#numGo');
+  const grid = app.querySelector('#numGrid');
+
+  grid.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-num]');
+    if (!btn) return;
+    chosen = Number(btn.dataset.num);
+    grid.querySelectorAll('.numbtn').forEach((b) => b.classList.toggle('is-on', b === btn));
+    go.disabled = false;
+    go.textContent = `Confirmar el ${pad2(chosen)}`;
+  });
+
+  app.querySelector('#numBack').addEventListener('click', () => renderPick());
+
+  go.addEventListener('click', async () => {
+    if (!chosen) return;
+    const back = app.querySelector('#numBack');
+    go.disabled = true;
+    back.disabled = true;
+    go.textContent = 'Guardando…';
+    try {
+      await claimPlayer(player.id, chosen);
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+      await loadCore().catch(() => {});
+      return renderNumberStep(player);
+    }
+    try {
+      await loadCore();
+    } catch {
+      /* el shell vuelve a cargar al entrar */
+    }
+    state.me = player.id;
+    toast(`${pad2(chosen)} es tu dorsal. Ya puedes votar.`);
+    shellReady = false;
+    renderShell();
   });
 }
 
