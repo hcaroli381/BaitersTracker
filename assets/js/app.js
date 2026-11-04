@@ -17,6 +17,9 @@ import { adminView } from './admin.js';
 const app = document.getElementById('app');
 let shellReady = false;
 
+/** Marcador: este navegador ha decidido no ser jugador (p. ej. el PC del admin). */
+const NO_PLAYER = 'bt.no.player';
+
 /* ------------------------------------------------------------------ */
 /* Arranque                                                            */
 /* ------------------------------------------------------------------ */
@@ -122,6 +125,7 @@ function renderPick() {
           ? `<p class="hint">${wildcards === 1 ? 'Hay un comodín' : `Hay ${wildcards} comodines`} en la plantilla: juegan cuando faltamos, no votan y no salen en esta lista.</p>`
           : ''
       }
+      <button class="link link--mini" type="button" id="pickSkip">Entrar sin jugador · solo ver y administrar</button>
     </header>
     ${
       players.length
@@ -153,6 +157,13 @@ function renderPick() {
       const player = players.find((p) => p.id === btn.dataset.pick);
       if (player) renderNumberStep(player);
     });
+  });
+
+  app.querySelector('#pickSkip').addEventListener('click', () => {
+    localStorage.setItem(NO_PLAYER, '1');
+    state.me = null;
+    shellReady = false;
+    renderShell();
   });
 
   app.querySelector('#pickOut').addEventListener('click', async () => {
@@ -224,6 +235,7 @@ function renderNumberStep(player) {
       await loadCore().catch(() => {});
       return renderNumberStep(player);
     }
+    localStorage.removeItem(NO_PLAYER);
     try {
       await loadCore();
     } catch {
@@ -260,7 +272,14 @@ async function start() {
   } catch {
     state.me = null;
   }
-  if (!state.me) return renderPick();
+
+  if (!state.me) {
+    if (localStorage.getItem(NO_PLAYER) === '1') {
+      renderShell();
+      return;
+    }
+    return renderPick();
+  }
 
   renderShell();
 }
@@ -295,6 +314,7 @@ function renderShell() {
       </nav>
       <div class="rail__foot">
         ${meChip()}
+        ${state.me ? '' : '<button class="btn btn--ghost btn--sm" type="button" data-claim>Vincular este dispositivo</button>'}
         <button class="btn btn--ghost btn--sm" type="button" data-out>Salir</button>
       </div>
     </aside>
@@ -318,6 +338,12 @@ function renderShell() {
       ).join('')}
     </nav>
   </div>`;
+
+  app.querySelector('[data-claim]')?.addEventListener('click', () => {
+    localStorage.removeItem(NO_PLAYER);
+    shellReady = false;
+    renderPick();
+  });
 
   app.querySelector('[data-out]')?.addEventListener('click', async () => {
     await signOut();
