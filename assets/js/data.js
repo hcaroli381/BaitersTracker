@@ -139,10 +139,12 @@ export function nextMatch() {
  * `votesByTarget`: Map(jugador → [{ voter, score }]) ordenado de mayor a menor nota.
  */
 export async function matchDetail(id) {
-  const [summary, appearances, votes] = await Promise.all([
+  const [summary, appearances, votes, mvpRow, tieVotes] = await Promise.all([
     sb().from('match_summary').select('*').eq('id', id).maybeSingle(),
     sb().from('appearances').select('player_id, segment, team, goals').eq('match_id', id),
     sb().from('votes').select('voter_id, target_id, score').eq('match_id', id),
+    sb().from('match_mvp').select('*').eq('match_id', id).maybeSingle(),
+    sb().from('mvp_tie_votes').select('voter_id, target_id, candidate_key').eq('match_id', id),
   ]);
   if (summary.error) throw summary.error;
   if (appearances.error) throw appearances.error;
@@ -195,6 +197,57 @@ export async function matchDetail(id) {
   });
 
   const scored = rows.filter((r) => r.avg_score != null).sort((a, b) => b.avg_score - a.avg_score);
+
+  // MVP y desempate los decide la base (vista `match_mvp`). Si la migración 03
+  // todavía no está aplicada, la ficha sigue funcionando con la mejor media.
+  const mvpInfoRow = mvpRow.error ? null : mvpRow.data;
+  const tieRows = tieVotes.error ? [] : tieVotes.data || [];
+  const candidateKey = mvpInfoRow?.candidate_key || null;
+  const candidateIds = candidateKey ? candidateKey.split(',') : [];
+  const tieCounts = new Map();
+  tieRows
+    .filter((v) => candidateKey && v.candidate_key === candidateKey)
+    .forEach((v) => tieCounts.set(v.target_id, (tieCounts.get(v.target_id) || 0) + 1));
+
+  const tieCandidates = candidateIds
+    .map((pid) => {
+      const entry = scores.get(pid);
+      const player = playerById(pid);
+      if (!entry || !player) return null;
+      return { player, avg: entry.avg, notes: entry.count, votes: tieCounts.get(pid) || 0 };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.player.name.localeCompare(b.player.name));
+
+  const winner = mvpInfoRow?.mvp_player_id ? playerById(mvpInfoRow.mvp_player_id) : null;
+  const mvpInfo = winner
+    ? {
+        player: winner,
+        score: mvpInfoRow.mvp_avg == null ? null : Number(mvpInfoRow.mvp_avg),
+        decided_by: mvpInfoRow.decided_by || 'notas',
+        tie_votes: Number(mvpInfoRow.mvp_tie_votes || 0),
+      }
+    : !mvpInfoRow && summary.data.status === 'closed' && scored.length
+      ? { player: scored[0].player, score: scored[0].avg_score, decided_by: 'notas', tie_votes: 0 }
+      : null;
+
+  const mine = state.me
+    ? tieRows.find((v) => v.voter_id === state.me && v.candidate_key === candidateKey)
+    : null;
+
+  const tie =
+    mvpInfoRow?.tie && tieCandidates.length >= 2
+      ? {
+          candidate_key: candidateKey,
+          candidates: tieCandidates,
+          total: tieCandidates.reduce((n, c) => n + c.votes, 0),
+          eligible: Number(mvpInfoRow.eligible || 0),
+          my_vote: mine?.target_id || null,
+          resolved: Boolean(mvpInfoRow.resolved),
+          winner_id: mvpInfoRow.resolved ? mvpInfoRow.mvp_player_id : null,
+        }
+      : null;
+
   return {
     summary: summary.data,
     lineup: rows,
@@ -203,10 +256,8 @@ export async function matchDetail(id) {
     myVotes,
     votesByTarget,
     votes: votes.data || [],
-    mvp:
-      summary.data.status === 'closed' && scored.length
-        ? { player: scored[0].player, score: scored[0].avg_score }
-        : null,
+    mvp: mvpInfo,
+    tie,
   };
 }
 
@@ -258,6 +309,16 @@ export async function castVote(matchId, targetId, score) {
     p_match: matchId,
     p_target: targetId,
     p_score: score,
+  });
+  if (error) throw error;
+}
+
+/** Voto del desempate del MVP (solo jugadores del partido con voto). */
+export async function castMvpTieVote(matchId, targetId) {
+  const { error } = await sb().rpc('cast_mvp_tie_vote', {
+    p_token: deviceToken(),
+    p_match: matchId,
+    p_target: targetId,
   });
   if (error) throw error;
 }

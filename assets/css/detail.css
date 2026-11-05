@@ -233,6 +233,27 @@
   color: var(--faint);
 }
 
+/* Desempate del MVP: votación entre los jugadores empatados a nota */
+.tie {
+  margin-bottom: 22px;
+  padding: 14px 16px;
+  border-left: 2px solid var(--acid);
+  background: var(--s1);
+}
+
+.tie__note {
+  margin-top: 10px;
+}
+
+.lrow:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.lrow:disabled:hover .lrow__name {
+  text-decoration: none;
+}
+
 /* ---------------------------------------------------------------- */
 /* Hoja de votación                                                  */
 /* ---------------------------------------------------------------- */

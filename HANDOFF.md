@@ -3,7 +3,7 @@
 > Léelo entero antes de tocar nada. Recoge la dirección de arte acordada, las decisiones tomadas,
 > el estado real del backend y la lista de lo que falta.
 
-Última actualización: **5 de noviembre de 2026** · Entrega: **v1.5 (ventana de votación y cambios de equipo)**
+Última actualización: **5 de noviembre de 2026** · Entrega: **v1.6 (ventana de votación, cambios de equipo y desempate del MVP)**
 
 ---
 
@@ -124,6 +124,8 @@ Reglas de color:
 
 - La regla vive en la base: `cast_vote` lanza «Los comodines no votan, solo juegan». No es una
   restricción de interfaz que se pueda saltar llamando a la API.
+- El desempate del MVP usa la misma regla (`cast_mvp_tie_vote`): comodines fuera, y solo votan quienes
+  jugaron ese partido.
 - Los comodines **no aparecen** en la lista de «¿Quién eres?», así que no vinculan móvil ni eligen
   dorsal. El admin los mete en la alineación del partido que jueguen.
 - Se cambia de tipo en cualquier momento desde Admin (selector al crear, botón por fila después) mediante
@@ -143,6 +145,7 @@ Proyecto: `sarbskubgajtftfthanl` (eu-west-3, Postgres 17, estado ACTIVE_HEALTHY)
 | `matches` | `id uuid` PK, `played_on date`, `status text` (`open` por defecto / `closed`), `kickoff_at timestamptz`, `created_at` |
 | `appearances` | PK (`match_id`,`player_id`,`segment`), `segment int` (1–9, tramo), `team text` (`A`/`B`), `goals int` |
 | `votes` | `id uuid` PK, único (`match_id`,`voter_id`,`target_id`), `score smallint` 1–10, `created_at` |
+| `mvp_tie_votes` | PK (`match_id`,`voter_id`,`candidate_key`), `target_id`, `created_at` — votos del desempate |
 | `settings` | `id int` PK = 1, `allow_self_vote bool` |
 
 `private.admin` (`id`, `pw_hash` bcrypt) guarda la contraseña de administración.
@@ -155,12 +158,14 @@ Proyecto: `sarbskubgajtftfthanl` (eu-west-3, Postgres 17, estado ACTIVE_HEALTHY)
   `teams text[]` y `stints int`.
 - `match_summary` — marcador agregado A/B por partido, `kickoff_at`, `votes_open_at` (= inicio + 1 h),
   `segments` (nº de tramos) y `votes_count`.
-- `mvp_matches` — ganador por media en partidos cerrados.
+- `mvp_matches` — ganador por media en partidos cerrados, ya con el desempate resuelto.
+- `match_mvp` — una fila por partido cerrado: mejor media, empatados (`candidate_key`), si hay empate,
+  si está resuelto, `decided_by` (`notas` / `desempate`) y los votos del desempate del ganador.
 
 Los goles viven en el tramo en que se marcaron, así que el marcador de `match_summary` sigue siendo la
 suma correcta por equipo aunque la gente cambie de lado a mitad de partido.
 
-**Importante:** las cuatro vistas se han migrado a `security_invoker = true` y se ha revocado `SELECT` a
+**Importante:** las cinco vistas se han migrado a `security_invoker = true` y se ha revocado `SELECT` a
 `anon`. Antes filtraban datos sin iniciar sesión aunque las tablas estuvieran protegidas por RLS.
 
 ### 4.3 Funciones RPC (`public`, todas `security definer`)
@@ -171,6 +176,10 @@ suma correcta por equipo aunque la gente cambie de lado a mitad de partido.
 - `claim_player` fija nombre y dorsal en una sola operación: `p_number` va a `shirt_number` si el jugador aún
   no tenía uno, y un dorsal repetido devuelve el mensaje «Ese dorsal lo acaba de coger otro».
 - `cast_vote` comprueba `can_vote` del votante y rechaza a los comodines.
+- `cast_mvp_tie_vote(p_token, p_match, p_target)` resuelve un empate en la mejor nota: exige partido
+  cerrado, jugador con voto que haya jugado, objetivo empatado y sin autovoto. Un voto por jugador y
+  empate; si el empate cambia, los votos de la ronda anterior dejan de contar. Gana quien consigue la
+  mayoría absoluta de los jugadores del partido con voto: un 1-0 no basta para decidir el MVP.
 - Admin (todas con `p_pw`): `admin_check`, `admin_add_player(p_pw, p_name, p_can_vote)`,
   `admin_set_can_vote(p_pw, p_player, p_can_vote)`, `admin_rename_player`,
   `admin_set_player_active`, `admin_set_number`, `admin_set_avatar`, `admin_delete_player`,
@@ -276,6 +285,13 @@ Siguiente paso natural: fotos y el primer partido.
 4. **Pruebas locales**
    - `tests/`: reglas puras en Node y el SQL real (con PGlite) sobre una reconstrucción del esquema.
      No se ejecuta nada contra el proyecto de producción. Ver §11.
+5. **Desempate del MVP**
+   - Si dos o más jugadores acaban con la misma nota, el MVP lo decide una votación entre ellos.
+   - Solo votan los jugadores de ese partido con `can_vote` (los comodines no) y sin autovoto.
+   - `match_mvp` decide el MVP; `player_stats.mvps` y `mvp_matches` respetan el desempate.
+   - Gana la mayoría absoluta de los jugadores del partido con voto; un solo voto no decide y, si no
+     hay mayoría, el MVP sigue pendiente (`eligible` y `tie_votes` lo dicen en la vista).
+   - La ficha enseña a los empatados, los votos y quién puede votar; el voto no se puede cambiar.
 
 ---
 
@@ -390,6 +406,8 @@ update public.players set can_vote = false where name = 'Nombre';
   base de pruebas, no se añade un botón en producción.
 - **La regla de los comodines va en la base**: cualquier función nueva que cuente votos o votantes debe
   respetar `can_vote`; no basta con ocultarlos en la interfaz.
+- **El desempate del MVP también va en la base**: no se resuelve por orden de id ni deja votar a un
+  comodín o a quien no jugó ese partido.
 - Probar en móvil real: 360 px de ancho es el objetivo mínimo.
 - No introducir dependencias ni build si no es imprescindible: la simplicidad del despliegue en Pages es
   una decisión, no un descuido.
@@ -399,7 +417,7 @@ update public.players set can_vote = false where name = 'Nombre';
 
 ## 11. Migraciones y pruebas
 
-**Estado: aplicadas en producción el 5/11/2026** (proyecto `sarbskubgajtftfthanl`), en orden 01 → 02.
+**Estado: aplicadas en producción el 5/11/2026** (proyecto `sarbskubgajtftfthanl`), en orden 01 → 03.
 Comprobado después: una sola firma por función, `appearances` con clave `(match_id, player_id, segment)`
 y las cuatro vistas respondiendo. Al pasar la clave a tres columnas hubo que quitar las dos claves
 foráneas de `votes` hacia `appearances` (Postgres no deja cambiar la PK con ellas colgando); su
@@ -409,7 +427,9 @@ integridad la impone `cast_vote`, y se restauró la referencia de `votes` a `pla
 - Las migraciones están en `supabase/migrations/` y son **idempotentes**. Orden obligatorio:
   1. `20261105_01_vote_window.sql` — `kickoff_at`, ventana de votación y `match_summary`.
   2. `20261105_02_team_splits.sql` — `appearances.segment`, RPCs de tramos y vistas de jugador.
-- **La 02 depende de la 01** (usa `kickoff_at`). Si algo falla, el `begin … commit` deja todo como estaba.
+  3. `20261105_03_mvp_tiebreak.sql` — `mvp_tie_votes`, vista `match_mvp` y RPC del desempate.
+- **La 02 depende de la 01** (usa `kickoff_at`) y **la 03 de la 02** (usa `appearances` y
+  `player_match`). Si algo falla, el `begin … commit` deja todo como estaba.
 - Antes de aplicarlas en producción conviene revisar las firmas reales de las funciones en Supabase. Las
   migraciones recrean `cast_vote`, `admin_create_match`, `admin_set_match_date`, `admin_set_lineup`,
   `admin_set_goals` y las cuatro vistas; el resto de RPCs no se toca.

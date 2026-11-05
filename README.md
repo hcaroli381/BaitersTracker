@@ -96,6 +96,21 @@ hora. Si un partido antiguo no tiene hora, cuenta como las 21:00 de su día.
 
 ---
 
+## MVP y desempate
+
+El MVP de un partido cerrado es la **mejor nota media**. Si dos o más jugadores acaban con la misma
+nota (dos decimales), el MVP lo decide una **votación de desempate**:
+
+- Votan solo los jugadores de ese partido que tengan voto. Los **comodines no votan**, y quien no
+  jugó tampoco: la regla está en la base (`cast_mvp_tie_vote`), no solo en la pantalla.
+- Cada uno elige a uno de los empatados y solo puede votar una vez; el autovoto sigue bloqueado.
+- Gana el que consiga la mayoría de los jugadores del partido con voto. Con un solo voto no se decide
+  nada, y mientras no haya mayoría el MVP sigue pendiente.
+- La ficha del partido enseña a los empatados, los votos de cada uno y quién puede votar.
+- Si después se corrige una nota y el empate cambia, los votos anteriores dejan de contar.
+
+---
+
 ## Equipos y cambios de equipo
 
 Los equipos y los goles se pueden poner **antes, durante y después** del partido, también con el partido
@@ -131,6 +146,7 @@ repetir):
 
 1. `supabase/migrations/20261105_01_vote_window.sql`
 2. `supabase/migrations/20261105_02_team_splits.sql`
+3. `supabase/migrations/20261105_03_mvp_tiebreak.sql`
 
 ---
 
@@ -147,7 +163,7 @@ npm test
 
 - `tests/rules.test.mjs` — reglas puras: ventana de votación, tramos, marcador por equipo y medias.
 - `tests/db.test.mjs` — SQL real: la hora de apertura, equipos antes/durante/después, tramos,
-  estadísticas sin doble conteo, permisos de admin y vistas cerradas a `anon`.
+  desempate del MVP, estadísticas sin doble conteo, permisos de admin y vistas cerradas a `anon`.
 - `tests/sql/base-schema.sql` — reconstrucción del esquema **solo para las pruebas** (no se aplica en
   Supabase).
 

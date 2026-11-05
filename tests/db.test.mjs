@@ -8,6 +8,8 @@
  *   2. Los equipos se pueden poner antes, durante y después del partido.
  *   3. «¿Hubo cambio de equipo?» divide el partido en tramos sin romper
  *      el marcador ni las estadísticas.
+ *   4. Un empate en la mejor nota se desempata con una votación de los
+ *      jugadores del partido que tengan voto (los comodines no).
  *
  * No toca Supabase ni la web en producción.
  * Ejecutar: `cd tests && npm test`
@@ -25,6 +27,7 @@ const ROOT = join(HERE, '..');
 const MIGRATIONS = [
   'supabase/migrations/20261105_01_vote_window.sql',
   'supabase/migrations/20261105_02_team_splits.sql',
+  'supabase/migrations/20261105_03_mvp_tiebreak.sql',
 ];
 
 const ADMIN = 'admin';
@@ -407,7 +410,7 @@ test('no se puede dividir un partido sin alineación ni pasarse de tramos', asyn
 
 test('las vistas siguen cerradas a anon (security_invoker)', async () => {
   const db = await freshDb();
-  for (const view of ['match_summary', 'player_match', 'player_stats', 'mvp_matches']) {
+  for (const view of ['match_summary', 'player_match', 'player_stats', 'mvp_matches', 'match_mvp']) {
     const res = await db.query(
       `select has_table_privilege('anon', $1, 'SELECT') as anon_select,
               coalesce((select option_value from pg_options_to_table(c.reloptions) where option_name = 'security_invoker'), 'false') as invoker
@@ -431,8 +434,212 @@ test('las migraciones se pueden aplicar dos veces sin romper nada', async () => 
   const views = await db.query(
     `select count(*)::int as n from pg_class c join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'v'
-        and c.relname in ('match_summary','player_match','player_stats','mvp_matches')`
+        and c.relname in ('match_summary','player_match','player_stats','mvp_matches','match_mvp')`
   );
-  assert.equal(views.rows[0].n, 4);
+  assert.equal(views.rows[0].n, 5);
+  await db.close();
+});
+
+/* ------------------------------------------------------------------ */
+/* 4. Desempate del MVP                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Partido cerrado con empate en la mejor nota: Ana y Bruno acaban con 8,00.
+ * Carla, Diego y Fran jugaron y pueden votar el desempate; Eva y el comodín no.
+ */
+async function tiedMatch() {
+  const db = await freshDb();
+  const players = {};
+  for (const name of ['Ana', 'Bruno', 'Carla', 'Diego', 'Eva', 'Fran']) {
+    players[name] = await addPlayer(db, name);
+  }
+  players.Comodin = await addPlayer(db, 'Comodin', { canVote: false });
+
+  const match = await createMatch(db, { kickoff: new Date(Date.now() - 6 * 3600_000).toISOString() });
+
+  for (const [name, team] of [
+    ['Ana', 'A'],
+    ['Carla', 'A'],
+    ['Fran', 'A'],
+    ['Bruno', 'B'],
+    ['Diego', 'B'],
+  ]) {
+    await db.query(`select public.admin_set_lineup($1,$2,$3,$4)`, [ADMIN, match, players[name], team]);
+  }
+
+  // 8 a Ana y 8 a Bruno: empatados a 8,00 en la mejor nota.
+  await db.query(`select public.cast_vote($1,$2,$3,8::smallint)`, ['tok-Carla', match, players.Ana]);
+  await db.query(`select public.cast_vote($1,$2,$3,8::smallint)`, ['tok-Diego', match, players.Bruno]);
+
+  await db.query(`select public.admin_set_match_status($1,$2,'closed')`, [ADMIN, match]);
+  return { db, match, players };
+}
+
+async function mvpRow(db, match) {
+  const res = await db.query(`select * from public.match_mvp where match_id = $1`, [match]);
+  return res.rows[0] || null;
+}
+
+test('con dos jugadores empatados a nota no hay MVP: lo decide una votación', async () => {
+  const { db, match, players } = await tiedMatch();
+  const row = await mvpRow(db, match);
+
+  assert.equal(row.tie, true);
+  assert.equal(row.resolved, false);
+  assert.equal(row.mvp_player_id, null);
+  assert.equal(row.candidates, 2);
+  assert.equal(Number(row.mvp_avg), 8);
+  assert.equal(row.decided_by, null);
+  assert.equal(row.tie_votes, 0);
+  assert.equal(row.eligible, 5);
+  assert.equal(row.candidate_key.split(',').length, 2);
+
+  const stats = await db.query(`select mvps from public.player_stats where id = $1`, [players.Ana]);
+  assert.equal(stats.rows[0].mvps, 0, 'un empate sin desempatar no regala el MVP');
+  await db.close();
+});
+
+test('el desempate solo lo votan los que jugaron y tienen voto', async () => {
+  const { db, match, players } = await tiedMatch();
+
+  // Comodín y quien no jugó: fuera. Tampoco vale votar a quien no empata ni a uno mismo.
+  await rejects(
+    db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Comodin', match, players.Ana]),
+    /comodines no votan/
+  );
+  await rejects(
+    db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Eva', match, players.Ana]),
+    /Solo votan quienes jugaron/
+  );
+  await rejects(
+    db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Carla', match, players.Carla]),
+    /no está en el desempate/
+  );
+  await rejects(
+    db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Ana', match, players.Ana]),
+    /votarte a ti mismo/
+  );
+
+  // Voto válido y bloqueo de repetir.
+  await db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Carla', match, players.Ana]);
+  await rejects(
+    db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Carla', match, players.Bruno]),
+    /Ya has votado/
+  );
+
+  // Un solo voto no decide: hacen falta 3 de los 5 que pueden votar.
+  await db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Diego', match, players.Bruno]);
+  await db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Fran', match, players.Ana]);
+  let row = await mvpRow(db, match);
+  assert.equal(row.resolved, false, '2-1 con 5 votantes todavía no es mayoría');
+  assert.equal(row.mvp_player_id, null);
+  assert.equal(row.tie_votes, 3);
+
+  // 2-2 sigue sin mayoría...
+  await db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Ana', match, players.Bruno]);
+  row = await mvpRow(db, match);
+  assert.equal(row.resolved, false);
+  assert.equal(row.tie_votes, 4);
+
+  // ...y el quinto voto (3-2) decide el MVP de Ana. Después ya no se puede votar.
+  await db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Bruno', match, players.Ana]);
+  row = await mvpRow(db, match);
+  assert.equal(row.resolved, true);
+  assert.equal(row.decided_by, 'desempate');
+  assert.equal(row.mvp_player_id, players.Ana);
+  assert.equal(row.mvp_tie_votes, 3);
+  assert.equal(row.tie_votes, 5);
+  assert.equal(row.eligible, 5);
+
+  await rejects(
+    db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Bruno', match, players.Ana]),
+    /ya está decidido/
+  );
+
+  const stats = await db.query(`select mvps from public.player_stats where id = $1`, [players.Ana]);
+  assert.equal(stats.rows[0].mvps, 1);
+  const bruno = await db.query(`select mvps from public.player_stats where id = $1`, [players.Bruno]);
+  assert.equal(bruno.rows[0].mvps, 0);
+  const winners = await db.query(`select player_id from public.mvp_matches where match_id = $1`, [match]);
+  assert.equal(winners.rows[0].player_id, players.Ana);
+  await db.close();
+});
+
+test('sin empate gana la mejor nota y el desempate no se puede votar', async () => {
+  const db = await freshDb();
+  const ana = await addPlayer(db, 'Ana');
+  const bruno = await addPlayer(db, 'Bruno');
+  const carla = await addPlayer(db, 'Carla');
+  const match = await createMatch(db, { kickoff: new Date(Date.now() - 5 * 3600_000).toISOString() });
+
+  for (const [id, team] of [
+    [ana, 'A'],
+    [bruno, 'B'],
+    [carla, 'A'],
+  ]) {
+    await db.query(`select public.admin_set_lineup($1,$2,$3,$4)`, [ADMIN, match, id, team]);
+  }
+  await db.query(`select public.cast_vote($1,$2,$3,9::smallint)`, ['tok-Carla', match, ana]);
+  await db.query(`select public.cast_vote($1,$2,$3,8::smallint)`, ['tok-Ana', match, bruno]);
+  await db.query(`select public.admin_set_match_status($1,$2,'closed')`, [ADMIN, match]);
+
+  const row = await mvpRow(db, match);
+  assert.equal(row.tie, false);
+  assert.equal(row.resolved, true);
+  assert.equal(row.decided_by, 'notas');
+  assert.equal(row.mvp_player_id, ana);
+  assert.equal(row.mvp_tie_votes, null);
+
+  await rejects(
+    db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Carla', match, ana]),
+    /no tiene empate por el MVP/
+  );
+  await db.close();
+});
+
+test('el desempate solo se vota con el partido cerrado', async () => {
+  const { db, match, players } = await tiedMatch();
+  await db.query(`select public.admin_set_match_status($1,$2,'open')`, [ADMIN, match]);
+
+  await rejects(
+    db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Carla', match, players.Ana]),
+    /partido cerrado/
+  );
+  await db.close();
+});
+
+test('si el empate cambia, los votos del desempate anterior no cuentan', async () => {
+  const { db, match, players } = await tiedMatch();
+
+  // Carla, Fran y Diego desempatan a favor de Ana (3 de 5).
+  await db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Carla', match, players.Ana]);
+  await db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Fran', match, players.Ana]);
+  await db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Diego', match, players.Ana]);
+  let row = await mvpRow(db, match);
+  assert.equal(row.mvp_player_id, players.Ana);
+
+  // Se reabre para corregir el partido: ahora Carla también acaba con 8,00.
+  await db.query(`select public.admin_set_allow_self_vote($1,true)`, [ADMIN]);
+  await db.query(`select public.admin_set_match_status($1,$2,'open')`, [ADMIN, match]);
+  await db.query(`select public.cast_vote($1,$2,$3,8::smallint)`, ['tok-Carla', match, players.Carla]);
+  await db.query(`select public.admin_set_match_status($1,$2,'closed')`, [ADMIN, match]);
+
+  row = await mvpRow(db, match);
+  assert.equal(row.candidates, 3);
+  assert.equal(row.resolved, false);
+  assert.equal(row.mvp_player_id, null);
+  assert.equal(row.tie_votes, 0, 'los votos del empate viejo no cuentan');
+
+  // Carla ya votó en la ronda anterior, pero esta es otra votación: puede votar otra vez.
+  await db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Carla', match, players.Bruno]);
+  await db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Fran', match, players.Bruno]);
+  row = await mvpRow(db, match);
+  assert.equal(row.resolved, false, '2 de 5 no es mayoría');
+
+  await db.query(`select public.cast_mvp_tie_vote($1,$2,$3)`, ['tok-Diego', match, players.Bruno]);
+  row = await mvpRow(db, match);
+  assert.equal(row.mvp_player_id, players.Bruno);
+  assert.equal(row.decided_by, 'desempate');
   await db.close();
 });

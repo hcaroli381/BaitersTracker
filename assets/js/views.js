@@ -34,6 +34,7 @@ import {
   playerHistory,
   playerById,
   castVote,
+  castMvpTieVote,
   loadCore,
 } from './data.js';
 
@@ -105,6 +106,122 @@ function reasonText(reason, match) {
     return `La votación abre el ${voteOpensLabel(match)}: una hora después del inicio.`;
   }
   return REASONS[reason] || '';
+}
+
+/* ------------------------------------------------------------------ */
+/* Desempate del MVP (empate en la nota)                               */
+/* ------------------------------------------------------------------ */
+
+/** Quién puede votar el desempate y por qué no, si no puede. La base lo impone igual. */
+function tieEligibility(detail) {
+  const tie = detail.tie;
+  if (!tie || tie.resolved) return { can: false, reason: '' };
+  const me = state.me;
+  if (!me) return { can: false, reason: 'Elige quién eres para votar el desempate.' };
+  if (playerById(me)?.can_vote === false) {
+    return { can: false, reason: 'Los comodines juegan, pero no votan.' };
+  }
+  if (!detail.lineup.some((l) => l.player_id === me)) {
+    return { can: false, reason: 'Solo votan quienes jugaron este partido.' };
+  }
+  if (tie.my_vote) {
+    const who = playerById(tie.my_vote);
+    return { can: false, reason: `Ya has votado: ${who?.name || 'tu voto'}.` };
+  }
+  return { can: true, reason: '' };
+}
+
+/**
+ * Bloque del desempate: quiénes empataron, cuántos votos lleva cada uno y
+ * quién puede votar. Si ya está resuelto, se enseña el resultado.
+ */
+function tieBlock(detail) {
+  const { tie } = detail;
+  if (!tie) return '';
+
+  const ok = tieEligibility(detail);
+  const me = state.me;
+  const status = tie.resolved
+    ? 'Resuelto'
+    : tie.eligible
+      ? `${tie.total} de ${tie.eligible} votos`
+      : 'Votación abierta';
+
+  const rows = tie.candidates
+    .map((c) => {
+      const self = Boolean(me) && c.player.id === me && !state.allowSelfVote;
+      const mine = tie.my_vote === c.player.id;
+      const winner = tie.winner_id === c.player.id;
+      const disabled = tie.resolved || !ok.can || self;
+      const tag = winner
+        ? '<span class="pill pill--acid">MVP</span>'
+        : mine
+          ? '<span class="pill pill--acid">Tu voto</span>'
+          : self
+            ? '<span class="pill">No puedes votarte</span>'
+            : '';
+
+      return `<li><button class="lrow" type="button" data-tie="${esc(c.player.id)}"${disabled ? ' disabled' : ''}>
+        ${avatar(c.player, 44)}
+        <span class="lrow__who">
+          <b class="lrow__name">${esc(c.player.name)}</b>
+          <span class="lrow__sub">${esc(plural(c.votes, 'voto del desempate', 'votos del desempate'))}</span>
+          ${tag}
+        </span>
+        <span class="lrow__end">${rateBadge(c.avg)}</span>
+      </button></li>`;
+    })
+    .join('');
+
+  return `${section('Desempate del MVP', `<span class="meta">${esc(status)}</span>`)}
+    <div class="tie">
+      <p class="hint">
+        ${esc(plural(tie.candidates.length, 'jugador ha empatado', 'jugadores han empatado'))}
+        a ${esc(rating2(tie.candidates[0].avg))} de nota. Lo decide una votación entre los jugadores
+        del partido con voto: gana el que consiga la mayoría. Los comodines no votan.
+      </p>
+      <ul class="lineup">${rows}</ul>
+      ${ok.reason ? `<p class="hint tie__note">${esc(ok.reason)}</p>` : ''}
+      ${ok.can ? '<p class="hint">Solo se vota una vez. Toca a un jugador para confirmar tu voto.</p>' : ''}
+    </div>`;
+}
+
+/** Hoja de confirmación del voto de desempate (no se puede cambiar después). */
+function openTieSheet(detail, candidate, refresh) {
+  const s = sheet({
+    title: 'Desempate del MVP',
+    subtitle: candidate.player.name,
+    body: `<div class="vs">
+      <div class="vs__sum">
+        <span class="vs__avg">${rating2(candidate.avg)}</span>
+        <span class="vs__txt">de media en el partido, ${esc(plural(candidate.notes, 'nota', 'notas'))}</span>
+      </div>
+      <p class="hint">Hay empate en la nota. Tu voto decide el MVP del partido y no se puede cambiar.</p>
+    </div>`,
+    actions: [
+      { id: 'cancel', label: 'Cancelar', variant: 'btn--ghost', onClick: () => s.close() },
+      {
+        id: 'confirm',
+        label: `Votar a ${candidate.player.name}`,
+        variant: 'btn--acid',
+        onClick: async () => {
+          const btn = s.action('confirm');
+          btn.disabled = true;
+          btn.textContent = 'Guardando…';
+          try {
+            await castMvpTieVote(detail.summary.id, candidate.player.id);
+            s.close();
+            toast(`Voto guardado: ${candidate.player.name}`);
+            refresh();
+          } catch (err) {
+            toast(errorMessage(err), 'error');
+            btn.disabled = false;
+            btn.textContent = 'Confirmar voto';
+          }
+        },
+      },
+    ],
+  });
 }
 
 /** Cuántos jugadores puede votar quien mira y cuántos lleva. null si no puede votar en este partido. */
@@ -464,7 +581,9 @@ export async function matchView(id) {
         mvp
           ? `<a class="mvp" href="${href('jugador', mvp.player.id)}">
               ${avatar(mvp.player, 48)}
-              <span class="mvp__text"><b>${esc(mvp.player.name)}</b><span>MVP del partido</span></span>
+              <span class="mvp__text"><b>${esc(mvp.player.name)}</b><span>${esc(
+                mvp.decided_by === 'desempate' ? 'MVP del partido · desempate' : 'MVP del partido'
+              )}</span></span>
               ${rateBadge(mvp.score, 'rate--ink')}
             </a>`
           : ''
@@ -476,6 +595,8 @@ export async function matchView(id) {
         ? `<p class="notice">La votación abre el ${esc(voteOpensLabel(summary))}. Hasta entonces no se puede votar; los equipos sí se pueden tocar.</p>`
         : ''
     }
+
+    ${tieBlock(detail)}
 
     ${
       prog
@@ -520,6 +641,13 @@ export async function matchView(id) {
         btn.addEventListener('click', () => {
           const row = lineup.find((l) => l.player_id === btn.dataset.player);
           if (row) openPlayerSheet(detail, row, refresh);
+        });
+      });
+
+      root.querySelectorAll('[data-tie]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const candidate = detail.tie?.candidates.find((c) => c.player.id === btn.dataset.tie);
+          if (candidate) openTieSheet(detail, candidate, refresh);
         });
       });
     },
