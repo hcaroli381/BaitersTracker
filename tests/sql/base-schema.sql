@@ -27,7 +27,7 @@ create table public.players (
   name text not null unique,
   shirt_number integer unique check (shirt_number between 1 and 99),
   device_hash text unique,
-  claimed boolean not null default false,
+  claimed boolean generated always as (device_hash is not null) stored,
   active boolean not null default true,
   can_vote boolean not null default true,
   avatar_path text,
@@ -110,9 +110,9 @@ begin
     raise exception 'Ese dorsal lo acaba de coger otro';
   end if;
 
+  -- `claimed` es generada (device_hash is not null): no se toca.
   update public.players
      set device_hash = md5(p_token),
-         claimed = true,
          shirt_number = coalesce(p_number, shirt_number)
    where id = p_player;
 end;

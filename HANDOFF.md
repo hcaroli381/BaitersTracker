@@ -141,7 +141,7 @@ Proyecto: `sarbskubgajtftfthanl` (eu-west-3, Postgres 17, estado ACTIVE_HEALTHY)
 
 | Tabla | Columnas |
 | --- | --- |
-| `players` | `id uuid` PK, `name text` único, `shirt_number int` único, `device_hash text` único, `claimed bool`, `active bool` (true), `can_vote bool` (true), `avatar_path text`, `created_at timestamptz` |
+| `players` | `id uuid` PK, `name text` único, `shirt_number int` único, `device_hash text` único, `claimed bool` generada (`device_hash is not null`), `active bool` (true), `can_vote bool` (true), `avatar_path text`, `created_at timestamptz` |
 | `matches` | `id uuid` PK, `played_on date`, `status text` (`open` por defecto / `closed`), `kickoff_at timestamptz`, `created_at` |
 | `appearances` | PK (`match_id`,`player_id`,`segment`), `segment int` (1–9, tramo), `team text` (`A`/`B`), `goals int` |
 | `votes` | `id uuid` PK, único (`match_id`,`voter_id`,`target_id`), `score smallint` 1–10, `created_at` |

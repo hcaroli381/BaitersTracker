@@ -47,8 +47,8 @@ async function freshDb() {
 /** Jugador con token de dispositivo ya vinculado. */
 async function addPlayer(db, name, { token = `tok-${name}`, canVote = true } = {}) {
   const res = await db.query(
-    `insert into public.players (name, device_hash, claimed, can_vote)
-     values ($1, md5($2), true, $3) returning id`,
+    `insert into public.players (name, device_hash, can_vote)
+     values ($1, md5($2), $3) returning id`,
     [name, token, canVote]
   );
   return res.rows[0].id;

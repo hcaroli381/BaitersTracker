@@ -84,9 +84,9 @@ begin
     raise exception 'Ese dorsal lo acaba de coger otro';
   end if;
 
+  -- `claimed` es una columna generada (device_hash is not null): no se toca.
   update public.players
      set device_hash = md5(p_token),
-         claimed = true,
          shirt_number = coalesce(p_number, shirt_number)
    where id = p_player;
 end;
