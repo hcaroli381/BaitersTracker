@@ -685,6 +685,27 @@ async function openLineup(match, opts = {}) {
 
 function settingsTab() {
   return `<div class="adminform">
+      <h2 class="subhead">Elección de jugador</h2>
+      <div class="switchrow">
+        <div>
+          <b>Un jugador, un móvil</b>
+          <p class="hint">Si está activo, cuando alguien coge un jugador nadie más puede cogerlo. El admin lo libera con «Liberar».</p>
+        </div>
+        <button class="switch ${state.claimLocked !== false ? 'is-on' : ''}" type="button" id="lockClaimed"
+          role="switch" aria-checked="${state.claimLocked !== false ? 'true' : 'false'}"><span></span></button>
+      </div>
+      <div class="switchrow">
+        <div>
+          <b>Los comodines aparecen para elegir</b>
+          <p class="hint">Si está desactivado, los comodines no salen en «¿Quién eres?»: solo juegan cuando los pone el admin.</p>
+        </div>
+        <button class="switch ${state.wildcardsPickable ? 'is-on' : ''}" type="button" id="wildcardsPickable"
+          role="switch" aria-checked="${state.wildcardsPickable ? 'true' : 'false'}"><span></span></button>
+      </div>
+      <p class="hint">Si no queda ningún jugador libre, la web entra directamente sin preguntar.</p>
+    </div>
+
+    <div class="adminform">
       <h2 class="subhead">Votaciones</h2>
       <div class="switchrow">
         <div>
@@ -713,6 +734,34 @@ function settingsTab() {
 }
 
 function mountSettings(root) {
+  root.querySelector('#lockClaimed')?.addEventListener('click', async (ev) => {
+    const btn = ev.currentTarget;
+    const next = !(state.claimLocked !== false);
+    try {
+      await adminRpc('admin_set_lock_claimed', { p_pw: adminPassword(), p_value: next });
+      state.claimLocked = next;
+      btn.classList.toggle('is-on', next);
+      btn.setAttribute('aria-checked', String(next));
+      toast(next ? 'Un jugador solo se puede coger una vez' : 'Un jugador se puede volver a coger');
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    }
+  });
+
+  root.querySelector('#wildcardsPickable')?.addEventListener('click', async (ev) => {
+    const btn = ev.currentTarget;
+    const next = !(state.wildcardsPickable === true);
+    try {
+      await adminRpc('admin_set_wildcards_pickable', { p_pw: adminPassword(), p_value: next });
+      state.wildcardsPickable = next;
+      btn.classList.toggle('is-on', next);
+      btn.setAttribute('aria-checked', String(next));
+      toast(next ? 'Los comodines salen en la lista' : 'Los comodines no salen en la lista');
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    }
+  });
+
   root.querySelector('#selfVote')?.addEventListener('click', async (ev) => {
     const btn = ev.currentTarget;
     const next = !(state.allowSelfVote === true);

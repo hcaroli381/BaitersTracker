@@ -57,6 +57,8 @@ export async function loadCore() {
   ]);
 
   state.allowSelfVote = settings?.data?.allow_self_vote === true;
+  state.claimLocked = settings?.data?.lock_claimed !== false;
+  state.wildcardsPickable = settings?.data?.wildcards_pickable === true;
 
   if (players.error) throw players.error;
   if (stats.error) throw stats.error;

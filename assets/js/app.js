@@ -95,10 +95,24 @@ function renderLogin() {
 /* Pantalla: elegir jugador                                            */
 /* ------------------------------------------------------------------ */
 
+/** Jugadores que salen en «¿Quién eres?» según los ajustes del admin. */
+function pickCandidates() {
+  return state.players.filter(
+    (p) => p.active !== false && (p.can_vote !== false || state.wildcardsPickable === true)
+  );
+}
+
+/** Elegibles ahora mismo: los libres o todos, si el admin permite reutilizarlos. */
+function pickablePlayers() {
+  const lock = state.claimLocked !== false;
+  return pickCandidates().filter((p) => !lock || !p.device_hash);
+}
+
 function renderPick() {
   window.scrollTo(0, 0);
-  const players = state.players.filter((p) => p.active !== false && p.can_vote !== false);
+  const players = pickCandidates();
   const wildcards = state.players.filter((p) => p.active !== false && p.can_vote === false).length;
+  const lock = state.claimLocked !== false;
 
   app.innerHTML = `<div class="pick">
     <header class="pick__head">
@@ -106,7 +120,7 @@ function renderPick() {
       <h1 class="title">¿Quién eres?</h1>
       <p class="lede">Toca tu nombre y elige dorsal. Este móvil quedará vinculado a ti para votar; si te equivocas, el admin puede liberarlo.</p>
       ${
-        wildcards
+        wildcards && state.wildcardsPickable !== true
           ? `<p class="hint">${wildcards === 1 ? 'Hay un comodín' : `Hay ${wildcards} comodines`} en la plantilla: juegan cuando falta gente, no votan y no salen en esta lista.</p>`
           : ''
       }
@@ -116,16 +130,21 @@ function renderPick() {
         ? `<div class="squad">
             ${players
               .map((p) => {
-                const taken = Boolean(p.device_hash);
+                const claimed = Boolean(p.device_hash);
+                const taken = lock && claimed;
                 return `<button class="scard${taken ? ' is-taken' : ''}" type="button" data-pick="${esc(p.id)}"${taken ? ' aria-disabled="true"' : ''}>
                   <span class="scard__photo">${photoBlock(p)}${p.shirt_number ? `<span class="scard__num">${pad2(p.shirt_number)}</span>` : ''}</span>
                   <b class="scard__name">${esc(p.name)}</b>
-                  <span class="scard__stat">${taken ? 'Ya está cogido' : 'Libre'}</span>
+                  <span class="scard__stat">${taken ? 'Ya está cogido' : claimed ? 'Cogido · se puede cambiar' : 'Libre'}</span>
                 </button>`;
               })
               .join('')}
           </div>`
-        : `<p class="hint">No hay jugadores todavía. Pide al admin que los añada.</p>`
+        : `<p class="hint">${
+            state.players.some((p) => p.active !== false)
+              ? 'Todos los jugadores ya están cogidos. Pide al admin que libere el tuyo.'
+              : 'No hay jugadores todavía. Pide al admin que los añada.'
+          }</p>`
     }
     <footer class="pick__foot">
       <button class="btn btn--ghost" type="button" id="pickSkip">Solo ver y administrar</button>
@@ -272,6 +291,11 @@ async function start() {
 
   if (!state.me) {
     if (localStorage.getItem(NO_PLAYER) === '1') {
+      renderShell();
+      return;
+    }
+    // Sin nadie a quien elegir (plantilla vacía o todos cogidos) se entra directo.
+    if (!pickablePlayers().length) {
       renderShell();
       return;
     }

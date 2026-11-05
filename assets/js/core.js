@@ -37,6 +37,9 @@ export const state = {
   stats: [],
   matches: [],
   email: '',
+  allowSelfVote: false,
+  claimLocked: true, // un jugador ya cogido no se puede volver a coger
+  wildcardsPickable: false, // los comodines salen en «¿Quién eres?»
 };
 
 /* ------------------------------------------------------------------ */

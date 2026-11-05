@@ -28,6 +28,7 @@ const MIGRATIONS = [
   'supabase/migrations/20261105_01_vote_window.sql',
   'supabase/migrations/20261105_02_team_splits.sql',
   'supabase/migrations/20261105_03_mvp_tiebreak.sql',
+  'supabase/migrations/20261105_04_pick_rules.sql',
 ];
 
 const ADMIN = 'admin';
@@ -641,5 +642,77 @@ test('si el empate cambia, los votos del desempate anterior no cuentan', async (
   row = await mvpRow(db, match);
   assert.equal(row.mvp_player_id, players.Bruno);
   assert.equal(row.decided_by, 'desempate');
+  await db.close();
+});
+
+/* ------------------------------------------------------------------ */
+/* 5. Elección de jugador: un jugador, un móvil y comodines ocultos    */
+/* ------------------------------------------------------------------ */
+
+const TOK_A = 'a'.repeat(64);
+const TOK_B = 'b'.repeat(64);
+
+async function addFreePlayer(db, name) {
+  const res = await db.query(`insert into public.players (name) values ($1) returning id`, [name]);
+  return res.rows[0].id;
+}
+
+test('claim_player: un jugador cogido no se vuelve a coger', async () => {
+  const db = await freshDb();
+  const ana = await addFreePlayer(db, 'Ana');
+  const bruno = await addFreePlayer(db, 'Bruno');
+
+  await db.query(`select public.claim_player($1,$2,7)`, [TOK_A, ana]);
+
+  // Otro móvil no puede cogerlo, ni siquiera con otro dorsal.
+  await rejects(db.query(`select public.claim_player($1,$2,8)`, [TOK_B, ana]), /ya lo ha cogido otro m\u00f3vil/);
+
+  // Un móvil ya vinculado no puede coger además a otro jugador.
+  await rejects(db.query(`select public.claim_player($1,$2,9)`, [TOK_A, bruno]), /ya est\u00e1 vinculado a otro jugador/);
+
+  // El mismo móvil puede corregir su propio dorsal.
+  await db.query(`select public.claim_player($1,$2,10)`, [TOK_A, ana]);
+  const row = await db.query(`select shirt_number, device_hash from public.players where id = $1`, [ana]);
+  assert.equal(row.rows[0].shirt_number, 10);
+
+  // Token inválido: fuera.
+  await rejects(db.query(`select public.claim_player($1,$2,null)`, ['corto', bruno]), /Token de dispositivo/);
+
+  await db.close();
+});
+
+test('claim_player: el admin puede desactivar el bloqueo y liberar', async () => {
+  const db = await freshDb();
+  const ana = await addFreePlayer(db, 'Ana');
+
+  await db.query(`select public.claim_player($1,$2,7)`, [TOK_A, ana]);
+  await db.query(`select public.admin_set_lock_claimed($1,false)`, [ADMIN]);
+
+  // Sin bloqueo, otro móvil puede volver a cogerlo (como antes).
+  await db.query(`select public.claim_player($1,$2,8)`, [TOK_B, ana]);
+  const row = await db.query(`select device_hash from public.players where id = $1`, [ana]);
+  const expected = await db.query(`select md5($1) as h`, [TOK_B]);
+  assert.equal(row.rows[0].device_hash, expected.rows[0].h);
+
+  await db.close();
+});
+
+test('ajustes de elección: por defecto bloqueado y comodines ocultos', async () => {
+  const db = await freshDb();
+
+  let res = await db.query(`select lock_claimed, wildcards_pickable from public.settings where id = 1`);
+  assert.equal(res.rows[0].lock_claimed, true);
+  assert.equal(res.rows[0].wildcards_pickable, false);
+
+  await rejects(db.query(`select public.admin_set_lock_claimed($1,false)`, ['mala']), /Contrase\u00f1a de admin/);
+  await rejects(db.query(`select public.admin_set_wildcards_pickable($1,true)`, ['mala']), /Contrase\u00f1a de admin/);
+
+  await db.query(`select public.admin_set_lock_claimed($1,false)`, [ADMIN]);
+  await db.query(`select public.admin_set_wildcards_pickable($1,true)`, [ADMIN]);
+
+  res = await db.query(`select lock_claimed, wildcards_pickable from public.settings where id = 1`);
+  assert.equal(res.rows[0].lock_claimed, false);
+  assert.equal(res.rows[0].wildcards_pickable, true);
+
   await db.close();
 });
