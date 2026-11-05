@@ -42,7 +42,7 @@ Dirección de arte: **Dark Editorial** — carbón, blanco roto y verde ácido, 
 | `assets/css/motion.css` | Movimiento: cascada de entrada, marcador, pulsación y progreso |
 | `assets/js/app.js` | Arranque, acceso, elección de nombre y dorsal, shell y router |
 | `assets/js/core.js` | Cliente Supabase, estado, formato, fotos, toasts, modales |
-| `assets/js/data.js` | Consultas, votaciones, identidad del dispositivo y RPCs |
+| `assets/js/data.js` | Consultas, votaciones, identidad del dispositivo, RPCs, fotos y tiempo real |
 | `assets/js/views.js` | Inicio, ranking, partidos, detalle de partido, perfil y plantilla |
 | `assets/js/admin.js` | Panel de administración |
 | `assets/js/config.js` | URL y clave pública de Supabase |
@@ -56,11 +56,12 @@ Dirección de arte: **Dark Editorial** — carbón, blanco roto y verde ácido, 
 - **Inicio** — último resultado, MVP destacado, próximo partido, jugadores destacados y últimos resultados.
 - **Ranking** — ordenable por goles, MVP, victorias, nota media y goles encajados.
 - **Partidos** — abiertos y cerrados, con alineaciones, goles y notas.
-- **Plantilla** — rejilla de jugadores con foto y dorsal.
+- **Plantilla** — rejilla de jugadores con foto y dorsal. Cada jugador puede cambiarse su propio dorsal.
 - **Perfil** — foto grande, histórico de estadísticas, evolución de la nota y partidos jugados.
 - **Admin** — jugadores (alta por nombre, renombrar, activar, liberar móvil, corregir dorsal, borrar),
-  fotografías, partidos (crear, fecha, estado, alineación con equipos y goles) y ajustes (autovoto,
-  contraseña de admin).
+  fotografías, partidos (crear, fecha, estado, alineación con equipos y goles, y **votos**: ver, cambiar
+  o quitar) y ajustes (autovoto, contraseña de admin).
+- **En directo** — los votos, desempates y alineaciones de los demás aparecen sin recargar.
 
 ---
 

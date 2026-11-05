@@ -23,7 +23,16 @@ import {
   localInputToISO,
 } from './core.js';
 import { KEYS } from './config.js';
-import { adminRpc, checkAdmin, uploadPlayerPhoto, clearPlayerPhoto, loadCore, playerById } from './data.js';
+import {
+  adminRpc,
+  checkAdmin,
+  uploadPlayerPhoto,
+  clearPlayerPhoto,
+  loadCore,
+  playerById,
+  loadMatchVotes,
+  loadMatchPlayerIds,
+} from './data.js';
 
 let tab = 'jugadores';
 
@@ -225,7 +234,7 @@ function mountPlayers(root) {
     if (!file || !target) return;
     toast('Subiendo foto…');
     try {
-      await uploadPlayerPhoto(target, file, adminPassword());
+      await uploadPlayerPhoto(target, file, adminPassword(), playerById(target)?.avatar_path ?? null);
       toast('Foto actualizada');
       rerenderAdmin();
     } catch (e) {
@@ -376,6 +385,7 @@ function matchesTab(matches) {
             <div class="adminrow__actions">
               <button class="iconbtn" type="button" data-mact="lineup">Alineación</button>
               <button class="iconbtn" type="button" data-mact="cut">¿Cambio de equipo?</button>
+              <button class="iconbtn" type="button" data-mact="votes">Votos</button>
               <button class="iconbtn" type="button" data-mact="status">${m.status === 'open' ? 'Cerrar' : 'Reabrir'}</button>
               <button class="iconbtn" type="button" data-mact="date">Fecha y hora</button>
               <button class="iconbtn iconbtn--danger" type="button" data-mact="delete">Borrar</button>
@@ -415,6 +425,9 @@ function mountMatches(root) {
       case 'cut':
         openLineup(match, { askSplit: true });
         break;
+      case 'votes':
+        openVotes(match);
+        break;
       case 'status':
         guard('admin_set_match_status', {
           p_pw: adminPassword(),
@@ -432,6 +445,108 @@ function mountMatches(root) {
         break;
       default:
         break;
+    }
+  });
+}
+
+/**
+ * Gestión de votos de un partido: ver, cambiar o quitar notas.
+ * Usa las RPC admin_set_vote y admin_delete_vote (las mismas reglas de la base).
+ */
+async function openVotes(match) {
+  const s = sheet({
+    title: 'Votos',
+    subtitle: longDate(match.played_on),
+    body: '<p class="hint">Cargando votos…</p>',
+    actions: [{ label: 'Cerrar', variant: 'btn--ghost', onClick: () => s.close() }],
+  });
+
+  let votes;
+  let playerIds;
+  try {
+    [votes, playerIds] = await Promise.all([loadMatchVotes(match.id), loadMatchPlayerIds(match.id)]);
+  } catch (e) {
+    s.el.querySelector('.sheet__body').innerHTML = `<p class="formerr">${esc(errorMessage(e))}</p>`;
+    return;
+  }
+
+  const name = (id) => playerById(id)?.name ?? 'Jugador';
+  const ordered = [...playerIds].sort((a, b) => name(a).localeCompare(name(b), 'es'));
+  const options = (selected = null) =>
+    ordered.map((id) => `<option value="${esc(id)}" ${id === selected ? 'selected' : ''}>${esc(name(id))}</option>`).join('');
+
+  const rows = votes
+    .slice()
+    .sort((a, b) => name(a.voter_id).localeCompare(name(b.voter_id), 'es') || name(a.target_id).localeCompare(name(b.target_id), 'es'))
+    .map(
+      (v) => `<li class="adminrow" data-vote="${esc(v.id)}">
+        <div class="adminrow__who">
+          <span class="adminrow__name">${esc(name(v.voter_id))} → ${esc(name(v.target_id))}</span>
+          <span class="adminrow__meta"><span class="chip chip--acid">${esc(String(v.score))}</span></span>
+        </div>
+        <div class="adminrow__actions">
+          <button class="iconbtn iconbtn--danger" type="button" data-vact="delete">Quitar</button>
+        </div>
+      </li>`
+    )
+    .join('');
+
+  const body = `
+    <ul class="adminlist">${rows || '<li class="hint">Aún no hay votos en este partido.</li>'}</ul>
+    <form class="adminform" id="voteForm">
+      <h2 class="subhead">Poner o cambiar un voto</h2>
+      <label class="field"><span class="field__label">Quién vota</span>
+        <select class="input" name="voter" required>${options()}</select></label>
+      <label class="field"><span class="field__label">A quién</span>
+        <select class="input" name="target" required>${options()}</select></label>
+      <label class="field"><span class="field__label">Nota (1 a 10)</span>
+        <input class="input" name="score" type="number" min="1" max="10" step="1" value="7" required></label>
+      <p class="hint">Si ya existe ese voto, se cambia la nota. Los dos jugadores deben estar en la alineación.</p>
+      <button class="btn btn--acid" type="submit">Guardar voto</button>
+    </form>`;
+  s.el.querySelector('.sheet__body').innerHTML = body;
+
+  const reopen = () => {
+    s.close();
+    openVotes(match);
+  };
+
+  s.el.querySelector('.sheet__body').addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('[data-vact]');
+    if (!btn) return;
+    const id = btn.closest('[data-vote]')?.dataset.vote;
+    if (!id) return;
+    try {
+      await adminRpc('admin_delete_vote', { p_pw: adminPassword(), p_vote: id });
+      toast('Voto quitado');
+      reopen();
+    } catch (e) {
+      toast(errorMessage(e), 'error');
+    }
+  });
+
+  s.el.querySelector('#voteForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const form = ev.target;
+    const voter = form.voter.value;
+    const target = form.target.value;
+    const score = Number(form.score.value);
+    if (voter === target) {
+      toast('Un jugador no puede votarse a sí mismo desde aquí', 'error');
+      return;
+    }
+    try {
+      await adminRpc('admin_set_vote', {
+        p_pw: adminPassword(),
+        p_match: match.id,
+        p_voter: voter,
+        p_target: target,
+        p_score: score,
+      });
+      toast('Voto guardado');
+      reopen();
+    } catch (e) {
+      toast(errorMessage(e), 'error');
     }
   });
 }

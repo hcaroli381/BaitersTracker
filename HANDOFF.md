@@ -3,7 +3,7 @@
 > Léelo entero antes de tocar nada. Recoge la dirección de arte acordada, las decisiones tomadas,
 > el estado real del backend y la lista de lo que falta.
 
-Última actualización: **5 de noviembre de 2026** · Entrega: **v1.6 (ventana de votación, cambios de equipo y desempate del MVP)**
+Última actualización: **5 de noviembre de 2026** · Entrega: **v1.7 (dorsal propio, votos en directo, gestión de votos del admin y limpieza de fotos)**
 
 ---
 
@@ -171,6 +171,8 @@ suma correcta por equipo aunque la gente cambie de lado a mitad de partido.
 ### 4.3 Funciones RPC (`public`, todas `security definer`)
 
 - Grupo: `me(p_token)`, `claim_player(p_token, p_player, p_number)`, `cast_vote(p_token, p_match, p_target, p_score)`.
+- `change_my_number(p_token, p_number)`: el propio jugador cambia su dorsal (1 a 99; el móvil se identifica por su token).
+  Un dorsal ya cogido devuelve «Ese dorsal ya lo tiene otro».
 - `cast_vote` comprueba la ventana: si `now() < kickoff_at + 1 h` lanza «La votación abre una hora
   después del inicio: DD/MM a las HH:MM». Ni la interfaz ni una llamada a mano pueden saltársela.
 - `claim_player` fija nombre y dorsal en una sola operación: `p_number` va a `shirt_number` si el jugador aún
@@ -197,6 +199,8 @@ suma correcta por equipo aunque la gente cambie de lado a mitad de partido.
 - `admin_split_match` responde a «¿Hubo cambio de equipo?»: abre el tramo siguiente copiando los equipos
   actuales con 0 goles y devuelve el número de tramo. `admin_remove_segment` deshace el último.
 - `admin_change_password` exige mínimo 8 caracteres.
+- `admin_set_vote` usa `ON CONFLICT (match_id, voter_id, target_id)`: sin la restricción `votes_one_per_pair`
+  (migración 05) fallaba al guardar. Si un voto ya existe, cambia la nota.
 
 ### 4.4 RLS y Storage
 
@@ -262,7 +266,18 @@ Siguiente paso natural: fotos y el primer partido.
      alineación.
    - «¿Quién eres?» filtra a los comodines y avisa de cuántos hay en la plantilla.
 
-### En esta sesión (5 de noviembre de 2026)
+### En esta sesión (5 de noviembre de 2026, segunda parte: v1.7)
+
+1. **Voto único en la base** — migración `20261105_05_unique_votes.sql`: `unique (match_id, voter_id, target_id)`.
+   Aplicada en producción. Hace falta también para que `admin_set_vote` funcione.
+2. **Cambio de dorsal propio** — migración `20261105_06_self_number_realtime.sql` (RPC `change_my_number`) y
+   botón «Cambiar mi dorsal» en Plantilla. El admin sigue pudiendo corregirlo.
+3. **Votos en directo** — la app escucha cambios en `votes`, `mvp_tie_votes`, `matches` y `appearances`
+   (Supabase Realtime) y repinta la pantalla. No repinta si hay una hoja abierta.
+4. **Gestión de votos del admin** — Admin → Partidos → **Votos**: ver, cambiar (poner una nota nueva a un par
+   que ya existe) y quitar votos. Usa `admin_set_vote` y `admin_delete_vote`.
+5. **Fotos** — al cambiar o quitar una foto se borra la anterior del bucket; si falla la asignación, se borra la
+   nueva para no dejar archivos huérfanos.
 
 1. **Ventana de votación**
    - `matches.kickoff_at`: la hora de inicio programada. Al crear el partido se pide día **y hora**
@@ -337,25 +352,23 @@ Siguiente paso natural: fotos y el primer partido.
 4. **Cerrar el registro** en Supabase (Authentication → Providers → Email → *Allow new users to sign up*
    desactivado) y subir el mínimo de contraseña.
 
+### Hecho en la v1.7 (ya no está pendiente)
+
+- Admin de votos (ver, cambiar, quitar) · Cambio de dorsal propio · Votos en directo · Borrado de fotos antiguas.
+
 ### Deuda conocida / mejoras pendientes
 
-- **Admin de votos**: las RPC `admin_set_vote` y `admin_delete_vote` existen pero no tienen interfaz
-  todavía (corregir una nota a mano requiere SQL o añadir pantalla).
-- **Cambio de dorsal**: un jugador no puede cambiarse el número a sí mismo; solo el admin. Si se quiere
-  permitir, hay que añadir RPC `change_my_number` con la misma validación de unicidad.
 - **Cambio de contraseña del grupo**: no hay interfaz; se hace en Supabase → Authentication → Users.
-- **Borrado de fotos antiguas**: al cambiar de foto se sube un archivo nuevo y el anterior queda en el
-  bucket. Conviene limpiar por política o desde el panel.
 - **Posición del jugador** (portero/defensa/…): no está en el esquema. Si se quiere mostrar, hay que
   añadir columna + RPC + UI.
 - **Equipos con nombre**: hoy son "Equipo A" y "Equipo B" (el esquema no guarda nombres). Se puede añadir
   una tabla `teams` o dos columnas en `matches`.
 - **Jornadas**: no numeradas en base de datos; se muestran por fecha.
-- **Realtime**: la app recarga al navegar. Para que las notas de los demás aparezcan sin recargar haría
-  falta `supabase.channel(...)` sobre `votes` y `matches`.
 - **PWA / icono en el móvil**: no implementado.
 - **Verificación visual**: en este entorno no hay navegador automatizado, así que la interfaz está
   verificada por revisión de código, sintaxis y HTTP, no con capturas. Revisar en móvil real.
+- **Pruebas de la v1.7**: no se han podido ejecutar (sin acceso al registro de npm para `@electric-sql/pglite`).
+  Revisar en el móvil: cambiar dorsal, editar un voto desde Admin y ver un voto nuevo sin recargar.
 - **Vistas y `security_invoker`**: si en el futuro se crea una vista nueva, hay que repetir
   `set (security_invoker = true)` y revocar `anon`, o volverá a haber fuga de datos.
 
@@ -417,7 +430,9 @@ update public.players set can_vote = false where name = 'Nombre';
 
 ## 11. Migraciones y pruebas
 
-**Estado: aplicadas en producción el 5/11/2026** (proyecto `sarbskubgajtftfthanl`), en orden 01 → 03.
+**Estado:** 01 → 03 aplicadas en producción el 5/11/2026. **05** (voto único) aplicada. **06** (dorsal propio y
+realtime) está en el repo pero **pendiente de aplicar en producción**: sin ella, «Cambiar mi dorsal» y el
+tiempo real no funcionan. Las migraciones 01-03 se aplicaron a mano; la 05 y la 06 con el conector de Supabase.
 Comprobado después: una sola firma por función, `appearances` con clave `(match_id, player_id, segment)`
 y las cuatro vistas respondiendo. Al pasar la clave a tres columnas hubo que quitar las dos claves
 foráneas de `votes` hacia `appearances` (Postgres no deja cambiar la PK con ellas colgando); su
@@ -428,6 +443,9 @@ integridad la impone `cast_vote`, y se restauró la referencia de `votes` a `pla
   1. `20261105_01_vote_window.sql` — `kickoff_at`, ventana de votación y `match_summary`.
   2. `20261105_02_team_splits.sql` — `appearances.segment`, RPCs de tramos y vistas de jugador.
   3. `20261105_03_mvp_tiebreak.sql` — `mvp_tie_votes`, vista `match_mvp` y RPC del desempate.
+  4. `20261105_04_pick_rules.sql` — reglas de «¿Quién eres?» y `claim_player`.
+  5. `20261105_05_unique_votes.sql` — restricción de voto único.
+  6. `20261105_06_self_number_realtime.sql` — `change_my_number` y publicación realtime.
 - **La 02 depende de la 01** (usa `kickoff_at`) y **la 03 de la 02** (usa `appearances` y
   `player_match`). Si algo falla, el `begin … commit` deja todo como estaba.
 - Antes de aplicarlas en producción conviene revisar las firmas reales de las funciones en Supabase. Las

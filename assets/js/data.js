@@ -286,6 +286,15 @@ export async function whoAmI() {
   return data || null;
 }
 
+/** El propio jugador cambia su dorsal (el móvil se identifica por su token). */
+export async function changeMyNumber(shirtNumber) {
+  const { error } = await sb().rpc('change_my_number', {
+    p_token: deviceToken(),
+    p_number: shirtNumber,
+  });
+  if (error) throw error;
+}
+
 export async function claimPlayer(playerId, shirtNumber = null) {
   const { error } = await sb().rpc('claim_player', {
     p_token: deviceToken(),
@@ -341,7 +350,7 @@ export async function checkAdmin(pw) {
   return Boolean(data);
 }
 
-export async function uploadPlayerPhoto(playerId, file, pw) {
+export async function uploadPlayerPhoto(playerId, file, pw, previousPath = null) {
   const cfg = getConfig();
   const allowed = ['image/jpeg', 'image/png', 'image/webp'];
   if (!allowed.includes(file.type)) throw new Error('Formato no admitido: usa JPG, PNG o WebP');
@@ -357,10 +366,71 @@ export async function uploadPlayerPhoto(playerId, file, pw) {
   });
   if (up.error) throw up.error;
 
-  await adminRpc('admin_set_avatar', { p_pw: pw, p_player: playerId, p_path: path });
+  try {
+    await adminRpc('admin_set_avatar', { p_pw: pw, p_player: playerId, p_path: path });
+  } catch (err) {
+    // La foto nueva no llegó a asignarse: no dejamos el archivo huérfano.
+    await removePhotoFiles([path]);
+    throw err;
+  }
+  // La foto anterior ya no se usa: se borra del bucket para no acumular archivos.
+  await removePhotoFiles([previousPath]);
   return path;
 }
 
-export async function clearPlayerPhoto(playerId, pw) {
+export async function clearPlayerPhoto(playerId, pw, previousPath = null) {
   await adminRpc('admin_set_avatar', { p_pw: pw, p_player: playerId, p_path: null });
+  await removePhotoFiles([previousPath]);
+}
+
+/** Borra archivos del bucket de fotos. Un fallo aquí no debe tumbar la acción principal. */
+async function removePhotoFiles(paths) {
+  const list = paths.filter((p) => p && !/^https?:\/\//i.test(p));
+  if (!list.length) return;
+  try {
+    await sb().storage.from(getConfig().bucket).remove(list);
+  } catch (err) {
+    console.warn('No se pudo borrar la foto anterior', err);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Tiempo real                                                         */
+/* ------------------------------------------------------------------ */
+
+let liveChannel = null;
+
+/**
+ * Escucha los cambios de votos, desempates, partidos y alineaciones.
+ * `onChange` se llama con un pequeño retardo para agrupar ráfagas de cambios.
+ */
+export function subscribeLive(onChange) {
+  if (liveChannel) return;
+  let timer = null;
+  const ping = () => {
+    clearTimeout(timer);
+    timer = setTimeout(onChange, 400);
+  };
+  liveChannel = sb().channel('bt-live');
+  ['votes', 'mvp_tie_votes', 'matches', 'appearances'].forEach((table) => {
+    liveChannel.on('postgres_changes', { event: '*', schema: 'public', table }, ping);
+  });
+  liveChannel.subscribe();
+}
+
+/** Jugadores que jugaron un partido (ids únicos), para elegir votantes y votados. */
+export async function loadMatchPlayerIds(matchId) {
+  const { data, error } = await sb().from('appearances').select('player_id').eq('match_id', matchId);
+  if (error) throw error;
+  return [...new Set((data || []).map((r) => r.player_id))];
+}
+
+/** Votos de un partido, para la gestión de admin. */
+export async function loadMatchVotes(matchId) {
+  const { data, error } = await sb()
+    .from('votes')
+    .select('id, voter_id, target_id, score')
+    .eq('match_id', matchId);
+  if (error) throw error;
+  return data || [];
 }

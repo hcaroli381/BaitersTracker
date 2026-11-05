@@ -1,6 +1,6 @@
 import { isConfigured, getConfig } from './config.js';
 import { state, esc, pad2, photoBlock, avatar, toast, errorMessage, parseRoute, href, stagger, animateCounts } from './core.js';
-import { signIn, signOut, session, loadCore, whoAmI, claimPlayer, takenNumbers, playerById } from './data.js';
+import { signIn, signOut, session, loadCore, whoAmI, claimPlayer, takenNumbers, playerById, subscribeLive } from './data.js';
 import { home, ranking, matches, matchView, playerView, squad } from './views.js';
 import { adminView } from './admin.js';
 
@@ -297,6 +297,22 @@ async function start() {
   }
 
   renderShell();
+  startLive();
+}
+
+/**
+ * Los votos y partidos llegan en directo. Si hay una hoja abierta (p. ej. el admin
+ * editando un voto) no se repinta la pantalla para no cerrarla a mitad de la acción.
+ */
+function startLive() {
+  subscribeLive(() => refreshRoute());
+  window.addEventListener('bt:refresh', () => refreshRoute());
+}
+
+async function refreshRoute() {
+  if (document.querySelector('.sheet')) return;
+  await loadCore().catch(() => {});
+  renderRoute();
 }
 
 function meChip() {
