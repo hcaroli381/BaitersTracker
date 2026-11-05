@@ -689,7 +689,7 @@ function settingsTab() {
       <div class="switchrow">
         <div>
           <b>Un jugador, un móvil</b>
-          <p class="hint">Si está activo, cuando alguien coge un jugador nadie más puede cogerlo. El admin lo libera con «Liberar».</p>
+          <p class="hint">Si está activo, cuando alguien coge un jugador deja de aparecer en la lista y nadie más puede cogerlo. El admin lo libera con «Liberar».</p>
         </div>
         <button class="switch ${state.claimLocked !== false ? 'is-on' : ''}" type="button" id="lockClaimed"
           role="switch" aria-checked="${state.claimLocked !== false ? 'true' : 'false'}"><span></span></button>

@@ -71,8 +71,8 @@ número en una rejilla de 1 a 99 con los ya ocupados tachados. El dorsal queda r
 `unique` en la base, así que dos personas no pueden acabar con el mismo. Si alguien se equivoca, el admin
 lo corrige con el botón `#` del panel (o lo libera y repite la elección).
 
-Un jugador cogido no se puede volver a coger desde otro móvil, y los comodines no salen en la lista de
-«¿Quién eres?»; las dos reglas se activan o desactivan en **Admin → Ajustes**. Si no queda ningún jugador
+Un jugador cogido desaparece de la lista de «¿Quién eres?» y no se puede volver a coger desde otro móvil,
+y los comodines tampoco salen; las dos reglas se activan o desactivan en **Admin → Ajustes**. Si no queda ningún jugador
 libre (plantilla vacía o todos cogidos), la web entra directamente sin preguntar.
 
 ---
