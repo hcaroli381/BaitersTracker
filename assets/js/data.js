@@ -286,15 +286,6 @@ export async function whoAmI() {
   return data || null;
 }
 
-/** El propio jugador cambia su dorsal (el móvil se identifica por su token). */
-export async function changeMyNumber(shirtNumber) {
-  const { error } = await sb().rpc('change_my_number', {
-    p_token: deviceToken(),
-    p_number: shirtNumber,
-  });
-  if (error) throw error;
-}
-
 export async function claimPlayer(playerId, shirtNumber = null) {
   const { error } = await sb().rpc('claim_player', {
     p_token: deviceToken(),

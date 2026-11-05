@@ -522,24 +522,6 @@
 /* Plantilla                                                         */
 /* ---------------------------------------------------------------- */
 
-/* Bloque «Tú eres…» con el botón de cambiar dorsal, separado de la rejilla. */
-.mynum {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px 16px;
-  margin: 12px 0 56px;
-}
-
-.mynum .hint {
-  margin: 0;
-}
-
-.mynum .btn {
-  flex-shrink: 0;
-}
-
 .squad {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

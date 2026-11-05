@@ -36,8 +36,6 @@ import {
   castVote,
   castMvpTieVote,
   loadCore,
-  changeMyNumber,
-  takenNumbers,
 } from './data.js';
 
 /* ------------------------------------------------------------------ */
@@ -858,50 +856,9 @@ export async function playerView(id) {
 /* Plantilla                                                           */
 /* ------------------------------------------------------------------ */
 
-/** El jugador cambia su propio dorsal. El admin sigue pudiendo corregirlo desde Admin. */
-function openMyNumber(player) {
-  const taken = takenNumbers(player.id);
-  const takenList = [...taken].sort((a, b) => a - b).map((n) => pad2(n)).join(', ');
-  const s = sheet({
-    title: 'Mi dorsal',
-    subtitle: player.name,
-    body: `<label class="field"><span class="field__label">Número del 1 al 99</span>
-      <input class="input" type="number" min="1" max="99" value="${player.shirt_number ?? ''}" id="myNumInput" inputmode="numeric"></label>
-      <p class="hint">${takenList ? `Ya están cogidos: ${esc(takenList)}` : 'Todos los dorsales están libres.'}</p>`,
-    actions: [
-      { label: 'Cancelar', variant: 'btn--ghost', onClick: () => s.close() },
-      {
-        label: 'Guardar',
-        variant: 'btn--acid',
-        onClick: async () => {
-          const raw = s.el.querySelector('#myNumInput').value.trim();
-          const n = Number(raw);
-          if (!/^\d{1,2}$/.test(raw) || n < 1 || n > 99) {
-            toast('Escribe un número entre 1 y 99', 'error');
-            return;
-          }
-          if (taken.has(n)) {
-            toast(`El ${pad2(n)} ya lo tiene otro`, 'error');
-            return;
-          }
-          try {
-            await changeMyNumber(n);
-            s.close();
-            toast(`Tu dorsal ahora es el ${pad2(n)}`);
-            window.dispatchEvent(new Event('bt:refresh'));
-          } catch (e) {
-            toast(errorMessage(e), 'error');
-          }
-        },
-      },
-    ],
-  });
-}
-
 export async function squad() {
   const players = [...state.players].filter((p) => p.active !== false);
   const inactive = state.players.filter((p) => p.active === false);
-  const mine = state.me ? state.players.find((p) => p.id === state.me) : null;
 
   const card = (p) => `<a class="scard" href="${href('jugador', p.id)}">
       <span class="scard__photo">${photoBlock(p)}${p.shirt_number ? `<span class="scard__num">${pad2(p.shirt_number)}</span>` : ''}</span>
@@ -909,16 +866,8 @@ export async function squad() {
       <span class="scard__stat">${esc(plural(p.stats?.goals ?? 0, 'gol', 'goles'))}${p.stats?.avg_rating != null ? `, nota ${esc(rating(p.stats.avg_rating))}` : ''}</span>
     </a>`;
 
-  const mineBlock = mine
-    ? `<div class="mynum">
-        <span class="hint">Tú eres <b>${esc(mine.name)}</b>${mine.shirt_number ? `, con el ${pad2(mine.shirt_number)}` : ''}.</span>
-        <button class="btn btn--ghost" type="button" data-mynum>Cambiar mi dorsal</button>
-      </div>`
-    : '';
-
   const html = `<div class="view">
     ${pageTitle('Plantilla', plural(players.length, 'jugador', 'jugadores'))}
-    ${mineBlock}
     ${players.length ? `<div class="squad">${players.map(card).join('')}</div>` : empty('Plantilla vacía', 'El admin añade a los jugadores desde Admin.')}
     ${
       inactive.length
@@ -927,10 +876,5 @@ export async function squad() {
     }
   </div>`;
 
-  return {
-    html,
-    mount(root) {
-      root.querySelector('[data-mynum]')?.addEventListener('click', () => openMyNumber(mine));
-    },
-  };
+  return { html, mount() {} };
 }

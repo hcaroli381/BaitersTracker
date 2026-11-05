@@ -56,7 +56,7 @@ Dirección de arte: **Dark Editorial** — carbón, blanco roto y verde ácido, 
 - **Inicio** — último resultado, MVP destacado, próximo partido, jugadores destacados y últimos resultados.
 - **Ranking** — ordenable por goles, MVP, victorias, nota media y goles encajados.
 - **Partidos** — abiertos y cerrados, con alineaciones, goles y notas.
-- **Plantilla** — rejilla de jugadores con foto y dorsal. Cada jugador puede cambiarse su propio dorsal.
+- **Plantilla** — rejilla de jugadores con foto y dorsal.
 - **Perfil** — foto grande, histórico de estadísticas, evolución de la nota y partidos jugados.
 - **Admin** — jugadores (alta por nombre, renombrar, activar, liberar móvil, corregir dorsal, borrar),
   fotografías, partidos (crear, fecha, estado, alineación con equipos y goles, y **votos**: ver, cambiar

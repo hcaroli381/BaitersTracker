@@ -306,11 +306,6 @@ async function start() {
  */
 function startLive() {
   subscribeLive(() => refreshRoute());
-  // Acción propia (p. ej. cambiar dorsal): refresca siempre, sin esperar a que se cierre la hoja.
-  window.addEventListener('bt:refresh', async () => {
-    await loadCore().catch(() => {});
-    renderRoute();
-  });
 }
 
 async function refreshRoute() {
