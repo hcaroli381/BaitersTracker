@@ -52,6 +52,7 @@ function renderNoConfig() {
 /* ------------------------------------------------------------------ */
 
 function renderLogin() {
+  window.scrollTo(0, 0);
   const cfg = getConfig();
   app.innerHTML = `<div class="gate">
     <div class="gate__head">
@@ -95,6 +96,7 @@ function renderLogin() {
 /* ------------------------------------------------------------------ */
 
 function renderPick() {
+  window.scrollTo(0, 0);
   const players = state.players.filter((p) => p.active !== false && p.can_vote !== false);
   const wildcards = state.players.filter((p) => p.active !== false && p.can_vote === false).length;
 
@@ -160,63 +162,73 @@ function renderPick() {
 /* ------------------------------------------------------------------ */
 
 function renderNumberStep(player) {
+  window.scrollTo(0, 0);
   const taken = takenNumbers(player.id);
-  const numbers = Array.from({ length: 99 }, (_, i) => i + 1);
-  let chosen = null;
+  const takenList = [...taken].sort((a, b) => a - b).map((n) => pad2(n)).join(', ');
 
   app.innerHTML = `<div class="pick pick--num">
     <header class="pick__head">
       ${WORDMARK}
-      <h1 class="title">Elige tu dorsal</h1>
+      <h1 class="title">Tu dorsal</h1>
       <div class="pickstep">
         ${avatar(player, 52)}
         <span class="pickstep__txt">
           <b>${esc(player.name)}</b>
-          <span class="hint">Toca un número libre. Quedará a tu nombre y nadie más podrá cogerlo.</span>
+          <span class="hint">Escribe un número del 1 al 99. Quedará a tu nombre.</span>
         </span>
       </div>
     </header>
-    <div class="numgrid" id="numGrid">
-      ${numbers
-        .map((n) =>
-          taken.has(n)
-            ? `<button class="numbtn" type="button" disabled aria-label="Dorsal ${n} ocupado"><s>${pad2(n)}</s></button>`
-            : `<button class="numbtn" type="button" data-num="${n}">${pad2(n)}</button>`
-        )
-        .join('')}
-    </div>
-    <div class="pick__bar">
-      <button class="btn btn--ghost" type="button" id="numBack">Cambiar jugador</button>
-      <button class="btn btn--acid" type="button" id="numGo" disabled>Elige un número</button>
-    </div>
+    <form id="numForm" class="numform" novalidate>
+      <label class="field">
+        <span class="field__label">Dorsal</span>
+        <input class="input input--num" id="numInput" name="num" type="text" inputmode="numeric"
+          autocomplete="off" maxlength="2" placeholder="00">
+      </label>
+      <p class="formerr" id="numErr" hidden></p>
+      <p class="hint">${takenList ? `Ya están cogidos: ${esc(takenList)}` : 'Todos los dorsales están libres.'}</p>
+      <div class="pick__bar">
+        <button class="btn btn--ghost" type="button" id="numBack">Cambiar jugador</button>
+        <button class="btn btn--acid" type="submit" id="numGo">Confirmar dorsal</button>
+      </div>
+    </form>
   </div>`;
 
+  const form = app.querySelector('#numForm');
+  const input = app.querySelector('#numInput');
+  const err = app.querySelector('#numErr');
   const go = app.querySelector('#numGo');
-  const grid = app.querySelector('#numGrid');
+  const back = app.querySelector('#numBack');
 
-  grid.addEventListener('click', (ev) => {
-    const btn = ev.target.closest('[data-num]');
-    if (!btn) return;
-    chosen = Number(btn.dataset.num);
-    grid.querySelectorAll('.numbtn').forEach((b) => b.classList.toggle('is-on', b === btn));
-    go.disabled = false;
-    go.textContent = `Confirmar el ${pad2(chosen)}`;
+  input.addEventListener('input', () => {
+    input.value = input.value.replace(/\D/g, '').slice(0, 2);
+    err.hidden = true;
   });
 
-  app.querySelector('#numBack').addEventListener('click', () => renderPick());
+  back.addEventListener('click', () => renderPick());
 
-  go.addEventListener('click', async () => {
-    if (!chosen) return;
-    const back = app.querySelector('#numBack');
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const raw = input.value.trim();
+    const n = Number(raw);
+    const fail = (msg) => {
+      err.hidden = false;
+      err.textContent = msg;
+      input.focus();
+    };
+    if (!/^\d{1,2}$/.test(raw) || n < 1 || n > 99) return fail('Escribe un número entre 1 y 99.');
+    if (taken.has(n)) return fail(`El ${pad2(n)} ya lo tiene otro. Elige otro.`);
+
     go.disabled = true;
     back.disabled = true;
     go.textContent = 'Guardando…';
     try {
-      await claimPlayer(player.id, chosen);
+      await claimPlayer(player.id, n);
     } catch (e) {
-      toast(errorMessage(e), 'error');
+      go.disabled = false;
+      back.disabled = false;
+      go.textContent = 'Confirmar dorsal';
       await loadCore().catch(() => {});
-      return renderNumberStep(player);
+      return fail(errorMessage(e));
     }
     localStorage.removeItem(NO_PLAYER);
     try {
@@ -225,10 +237,12 @@ function renderNumberStep(player) {
       /* el shell vuelve a cargar al entrar */
     }
     state.me = player.id;
-    toast(`El ${pad2(chosen)} es tu dorsal. Ya puedes votar.`);
+    toast(`El ${pad2(n)} es tu dorsal. Ya puedes votar.`);
     shellReady = false;
     renderShell();
   });
+
+  input.focus({ preventScroll: true });
 }
 
 /* ------------------------------------------------------------------ */
@@ -280,6 +294,7 @@ function meChip() {
 }
 
 function renderShell() {
+  window.scrollTo(0, 0);
   shellReady = true;
 
   app.innerHTML = `<div class="shell">
@@ -384,7 +399,7 @@ async function renderRoute() {
   } catch (err) {
     console.error(err);
   }
-  window.scrollTo({ top: 0, behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
+  window.scrollTo(0, 0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -392,6 +407,7 @@ async function renderRoute() {
 /* ------------------------------------------------------------------ */
 
 function renderFatal(err) {
+  window.scrollTo(0, 0);
   app.innerHTML = `<div class="gate">
     <div class="gate__head">${WORDMARK}</div>
     <div class="gate__panel">

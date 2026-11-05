@@ -478,3 +478,18 @@ select.input {
   font-size: 15px;
   max-width: 44ch;
 }
+
+.numform {
+  display: grid;
+  gap: 14px;
+  max-width: 480px;
+}
+
+.input--num {
+  min-height: 88px;
+  font-family: var(--num);
+  font-size: 64px;
+  font-weight: 800;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
