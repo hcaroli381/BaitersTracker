@@ -239,18 +239,22 @@
 
 .lineupEdit__ctrl {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px 10px;
 }
 
 .lineupEdit__teams {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  min-width: 0;
 }
 
 .lineupEdit__teams .iconbtn {
-  min-width: 72px;
+  min-width: 0;
+  padding: 0 10px;
 }
 
 .stepper {
@@ -481,4 +485,67 @@ button.more {
   background: none;
   cursor: pointer;
   font: inherit;
+}
+
+/* ---------------------------------------------------------------- */
+/* Tramos: ¿hubo cambio de equipo?                                   */
+/* ---------------------------------------------------------------- */
+
+.seg--segments {
+  margin: 0;
+  padding: 0;
+}
+
+.lineupTools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.lineupTools .meta {
+  flex: 1 1 100%;
+  font-family: var(--num);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.lineupTools .iconbtn {
+  padding: 0 12px;
+}
+
+.lineupEdit__sum {
+  color: var(--faint);
+  font-family: var(--num);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.lineupEdit__tag--move {
+  background: var(--acid-soft);
+  color: var(--acid);
+}
+
+.askcut {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-left: 2px solid var(--acid);
+  border-radius: var(--r-m);
+  background: var(--s2);
+}
+
+.askcut__q {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.askcut__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }

@@ -1,5 +1,5 @@
 import { isConfigured, getConfig } from './config.js';
-import { state, esc, pad2, photoBlock, avatar, toast, errorMessage, parseRoute, href } from './core.js';
+import { state, esc, pad2, photoBlock, avatar, toast, errorMessage, parseRoute, href, stagger, animateCounts } from './core.js';
 import { signIn, signOut, session, loadCore, whoAmI, claimPlayer, takenNumbers, playerById } from './data.js';
 import { home, ranking, matches, matchView, playerView, squad } from './views.js';
 import { adminView } from './admin.js';
@@ -399,6 +399,8 @@ async function renderRoute() {
   } catch (err) {
     console.error(err);
   }
+  stagger(host);
+  animateCounts(host);
   window.scrollTo(0, 0);
 }
 

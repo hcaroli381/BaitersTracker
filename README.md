@@ -38,7 +38,8 @@ Dirección de arte: **Dark Editorial** — carbón, blanco roto y verde ácido, 
 | `assets/css/layout.css` | Acceso, elección de jugador y dorsal, shell, navegación y fotos |
 | `assets/css/views.css` | Inicio, ranking y lista de partidos |
 | `assets/css/detail.css` | Detalle de partido, perfil y plantilla |
-| `assets/css/admin.css` | Panel de admin, hojas modales, toasts y movimiento |
+| `assets/css/admin.css` | Panel de admin, hojas modales y toasts |
+| `assets/css/motion.css` | Movimiento: cascada de entrada, marcador, pulsación y progreso |
 | `assets/js/app.js` | Arranque, acceso, elección de nombre y dorsal, shell y router |
 | `assets/js/core.js` | Cliente Supabase, estado, formato, fotos, toasts, modales |
 | `assets/js/data.js` | Consultas, votaciones, identidad del dispositivo y RPCs |
@@ -78,3 +79,76 @@ Se suben desde **Admin → Jugadores → Foto** (móvil u ordenador, JPG/PNG/Web
 Van a Supabase Storage, bucket `player-photos`, en `player-photos/<id-jugador>/<timestamp>.<ext>`, y se
 asocian al jugador con `admin_set_avatar`. El bucket es público de lectura: la imagen se ve siempre, en
 todos los partidos e históricos.
+
+---
+
+## Votación: cuándo se abre
+
+Cada partido guarda su **hora de inicio** (`kickoff_at`). La votación abre **una hora después** del
+inicio programado, ni un minuto antes. La regla está en la base (`cast_vote`), así que no se salta
+llamando a la API a mano; la interfaz solo la explica:
+
+- En la ficha del partido: «La votación abre el sáb 8 nov, 22:00».
+- En Inicio, en lugar de «te faltan notas», el aviso de que todavía no está abierta.
+
+El admin puede corregir día y hora desde **Admin → Partidos → Fecha y hora**; mover el día conserva la
+hora. Si un partido antiguo no tiene hora, cuenta como las 21:00 de su día.
+
+---
+
+## Equipos y cambios de equipo
+
+Los equipos y los goles se pueden poner **antes, durante y después** del partido, también con el partido
+cerrado.
+
+Si a mitad de partido los equipos están desequilibrados, en **Admin → Partidos → ¿Cambio de equipo?**
+(también dentro del editor de alineación) se responde que sí y el partido se divide en **tramos**:
+
+- Cada tramo tiene sus propios equipos y sus goles.
+- Se abre copiando los equipos actuales, para rebalancear solo a quien haga falta.
+- Los goles de cada tramo cuentan para el equipo con el que se marcaron, así que el marcador final sigue
+  cuadrando. Un jugador que cambió reparte sus goles al lado correcto.
+- El detalle enseña **Cambios de equipo**: quién jugaba en cada lado y cómo iba el marcador en cada tramo.
+- Se puede **deshacer el último tramo** si se marcó por error.
+
+---
+
+## Movimiento
+
+La animación vive en `assets/css/motion.css`, que se carga después de todos los demás estilos. No cambia
+la estética: solo mueve lo que ya hay.
+
+- Los bloques de cada pantalla, las filas, los equipos y las hojas entran en cascada.
+- El marcador cuenta de 0 al resultado y la raya del centro se dibuja.
+- La barra de votos crece hasta su porcentaje y las notas aparecen con un golpe.
+- En móvil, filas y botones se hunden un poco al pulsarlos.
+- Todo se apaga con «reducir movimiento» del sistema.
+
+## Migraciones
+
+El esquema se aplica a mano en **Supabase → SQL Editor**, en este orden (son idempotentes, se pueden
+repetir):
+
+1. `supabase/migrations/20261105_01_vote_window.sql`
+2. `supabase/migrations/20261105_02_team_splits.sql`
+
+---
+
+## Pruebas
+
+No hay build y las pruebas no tocan producción: montan un PostgreSQL de mentira (PGlite) con una
+reconstrucción del esquema y aplican encima las migraciones.
+
+```bash
+cd tests
+npm install
+npm test
+```
+
+- `tests/rules.test.mjs` — reglas puras: ventana de votación, tramos, marcador por equipo y medias.
+- `tests/db.test.mjs` — SQL real: la hora de apertura, equipos antes/durante/después, tramos,
+  estadísticas sin doble conteo, permisos de admin y vistas cerradas a `anon`.
+- `tests/sql/base-schema.sql` — reconstrucción del esquema **solo para las pruebas** (no se aplica en
+  Supabase).
+
+La regla compartida por la app y las pruebas vive en `assets/js/rules.js`, sin dependencias.

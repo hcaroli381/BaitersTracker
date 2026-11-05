@@ -3,7 +3,7 @@
 > Léelo entero antes de tocar nada. Recoge la dirección de arte acordada, las decisiones tomadas,
 > el estado real del backend y la lista de lo que falta.
 
-Última actualización: **4 de noviembre de 2026** · Entrega: **v1.4 (comodines, sin demo, dorsal propio)**
+Última actualización: **5 de noviembre de 2026** · Entrega: **v1.5 (ventana de votación y cambios de equipo)**
 
 ---
 
@@ -81,6 +81,22 @@ Reglas de color:
 
 ---
 
+### 2.5 Movimiento
+
+- Vive en `assets/css/motion.css`, que se carga el último. No cambia la estética: no hay colores,
+  sombras ni degradados nuevos; solo se mueve lo que ya está.
+- Solo se animan `transform` y `opacity`: nada que fuerce repintado ni recálculo de caja en móvil.
+- Entrada en cascada: `stagger()` (`core.js`) reparte `--i` por los hijos de la vista, las listas, las
+  hojas y la escala de notas; `motion.css` lo traduce en 42 ms de retardo por pieza (máximo 12).
+- Cifras: `count(v)` marca el marcador y `animateCounts()` cuenta de 0 al valor en ~0,6 s, con red de
+  seguridad por si la pestaña queda en segundo plano.
+- Pulsación: las filas, tarjetas y botones se hunden un poco al pulsarlos (`scale(0.985)` y
+  `scale(0.94)`). Sin media query: se comporta igual con dedo y con ratón, y así se puede comprobar.
+- Con `prefers-reduced-motion: reduce` todo queda en 0,001 ms y sin retardo: nada se mueve y nada se
+  queda escondido.
+- Regla que no hay que romper: `animation-fill-mode: backwards`, nunca `both`. Con `both`, el
+  `transform` final de la animación gana al `:active` y la pulsación deja de verse.
+
 ## 3. Acceso y roles
 
 | Rol | Cómo entra | Qué puede |
@@ -124,8 +140,8 @@ Proyecto: `sarbskubgajtftfthanl` (eu-west-3, Postgres 17, estado ACTIVE_HEALTHY)
 | Tabla | Columnas |
 | --- | --- |
 | `players` | `id uuid` PK, `name text` único, `shirt_number int` único, `device_hash text` único, `claimed bool`, `active bool` (true), `can_vote bool` (true), `avatar_path text`, `created_at timestamptz` |
-| `matches` | `id uuid` PK, `played_on date`, `status text` (`open` por defecto / `closed`), `created_at` |
-| `appearances` | PK (`match_id`,`player_id`), `team text` (`A`/`B`), `goals int` |
+| `matches` | `id uuid` PK, `played_on date`, `status text` (`open` por defecto / `closed`), `kickoff_at timestamptz`, `created_at` |
+| `appearances` | PK (`match_id`,`player_id`,`segment`), `segment int` (1–9, tramo), `team text` (`A`/`B`), `goals int` |
 | `votes` | `id uuid` PK, único (`match_id`,`voter_id`,`target_id`), `score smallint` 1–10, `created_at` |
 | `settings` | `id int` PK = 1, `allow_self_vote bool` |
 
@@ -135,8 +151,14 @@ Proyecto: `sarbskubgajtftfthanl` (eu-west-3, Postgres 17, estado ACTIVE_HEALTHY)
 
 - `player_stats` — partidos, victorias/empates/derrotas, goles, MVP, media y encajados por partido.
 - `player_match` — una fila por jugador y partido, con equipo, goles, `gf`/`ga`, media y nº de votos.
-- `match_summary` — marcador agregado A/B por partido.
+  Con cambios de equipo `team` es `AB`, `gf`/`ga` van a `null` (no hay un resultado único) y se añaden
+  `teams text[]` y `stints int`.
+- `match_summary` — marcador agregado A/B por partido, `kickoff_at`, `votes_open_at` (= inicio + 1 h),
+  `segments` (nº de tramos) y `votes_count`.
 - `mvp_matches` — ganador por media en partidos cerrados.
+
+Los goles viven en el tramo en que se marcaron, así que el marcador de `match_summary` sigue siendo la
+suma correcta por equipo aunque la gente cambie de lado a mitad de partido.
 
 **Importante:** las cuatro vistas se han migrado a `security_invoker = true` y se ha revocado `SELECT` a
 `anon`. Antes filtraban datos sin iniciar sesión aunque las tablas estuvieran protegidas por RLS.
@@ -144,16 +166,27 @@ Proyecto: `sarbskubgajtftfthanl` (eu-west-3, Postgres 17, estado ACTIVE_HEALTHY)
 ### 4.3 Funciones RPC (`public`, todas `security definer`)
 
 - Grupo: `me(p_token)`, `claim_player(p_token, p_player, p_number)`, `cast_vote(p_token, p_match, p_target, p_score)`.
+- `cast_vote` comprueba la ventana: si `now() < kickoff_at + 1 h` lanza «La votación abre una hora
+  después del inicio: DD/MM a las HH:MM». Ni la interfaz ni una llamada a mano pueden saltársela.
 - `claim_player` fija nombre y dorsal en una sola operación: `p_number` va a `shirt_number` si el jugador aún
   no tenía uno, y un dorsal repetido devuelve el mensaje «Ese dorsal lo acaba de coger otro».
 - `cast_vote` comprueba `can_vote` del votante y rechaza a los comodines.
 - Admin (todas con `p_pw`): `admin_check`, `admin_add_player(p_pw, p_name, p_can_vote)`,
   `admin_set_can_vote(p_pw, p_player, p_can_vote)`, `admin_rename_player`,
   `admin_set_player_active`, `admin_set_number`, `admin_set_avatar`, `admin_delete_player`,
-  `admin_release_player`, `admin_create_match`, `admin_set_match_date`, `admin_set_match_status`,
-  `admin_set_lineup`, `admin_set_goals`, `admin_delete_match`, `admin_delete_vote`, `admin_set_vote`,
-  `admin_set_allow_self_vote`, `admin_change_password`.
-- `admin_set_lineup` con `p_team = null` elimina la aparición (así se saca a alguien de la alineación).
+  `admin_release_player`, `admin_create_match(p_pw, p_date, p_kickoff)`, `admin_set_match_date`,
+  `admin_set_match_kickoff(p_pw, p_match, p_kickoff)`, `admin_set_match_status`,
+  `admin_set_lineup`, `admin_set_goals`, `admin_split_match(p_pw, p_match)`,
+  `admin_remove_segment(p_pw, p_match, p_segment)`, `admin_delete_match`, `admin_delete_vote`,
+  `admin_set_vote`, `admin_set_allow_self_vote`, `admin_change_password`.
+- `admin_set_lineup(p_pw, p_match, p_player, p_team, p_segment)` con `p_team = null` elimina la aparición
+  de ese tramo (así se saca a alguien de la alineación). `p_segment` es opcional (1 por defecto).
+- `admin_set_goals(p_pw, p_match, p_player, p_goals, p_segment)`; sin equipo en ese tramo falla con
+  «Asigna equipo antes de poner goles».
+- **Equipos cuando quiera:** ninguna de las dos mira el estado ni la fecha del partido, así que la
+  alineación se puede poner antes, durante y después (también con el partido cerrado).
+- `admin_split_match` responde a «¿Hubo cambio de equipo?»: abre el tramo siguiente copiando los equipos
+  actuales con 0 goles y devuelve el número de tramo. `admin_remove_segment` deshace el último.
 - `admin_change_password` exige mínimo 8 caracteres.
 
 ### 4.4 RLS y Storage
@@ -220,6 +253,30 @@ Siguiente paso natural: fotos y el primer partido.
      alineación.
    - «¿Quién eres?» filtra a los comodines y avisa de cuántos hay en la plantilla.
 
+### En esta sesión (5 de noviembre de 2026)
+
+1. **Ventana de votación**
+   - `matches.kickoff_at`: la hora de inicio programada. Al crear el partido se pide día **y hora**
+     (21:00 por defecto); `admin_set_match_kickoff` la corrige y mover el día conserva la hora.
+   - La votación abre **una hora después** del inicio, y la regla vive en la base: `cast_vote` la impone
+     con `private.vote_opens_at` / `private.votes_are_open`.
+   - La interfaz lo explica en vez de fallar: la ficha del partido enseña «La votación abre el …» y el
+     inicio avisa en lugar de contar notas pendientes.
+2. **Equipos cuando quiera**
+   - `admin_set_lineup` y `admin_set_goals` ya no dependen del estado ni de la fecha: antes, durante y
+     después del partido, también cerrado.
+3. **¿Hubo cambio de equipo? (tramos)**
+   - Nuevo botón en Admin → Partidos y dentro del editor de alineación.
+   - Al responder que sí, el partido se divide en **tramos** (`appearances.segment`), cada uno con sus
+     equipos y sus goles; el admin rebalancea solo a quien haga falta. Se puede deshacer el último tramo.
+   - El detalle enseña «Cambios de equipo» con quién jugaba en cada lado y cómo iba el marcador en cada
+     tramo; cada jugador que cambió lleva su recorrido («1º Oscuros · 2º Claros»).
+   - Las vistas se rehicieron para que un partido con tramos cuente como **un** partido y sume los goles
+     de todos los tramos al equipo correcto.
+4. **Pruebas locales**
+   - `tests/`: reglas puras en Node y el SQL real (con PGlite) sobre una reconstrucción del esquema.
+     No se ejecuta nada contra el proyecto de producción. Ver §11.
+
 ---
 
 ## 6. Cómo se usa (para el usuario)
@@ -232,8 +289,12 @@ Siguiente paso natural: fotos y el primer partido.
    el nombre**, eligiendo tipo (Vota / Comodín). Cada uno elegirá dorsal al entrar por primera vez; el
    botón `#` del panel lo corrige.
 5. Subir foto a cada jugador (cámara del móvil o archivo).
-6. Partidos → crear el partido de hoy → **Alineación**: asignar A/B y goles (aquí entran los comodines) →
-   **Cerrar** cuando acabe la votación.
+6. Partidos → crear el partido con **día y hora** → **Alineación**: asignar A/B y goles (aquí entran los
+   comodines). La alineación se puede tocar en cualquier momento.
+   - La votación **no se abre hasta una hora después del inicio**; el panel dice a qué hora abre.
+   - Si a mitad de partido hay que rebalancear, **¿Cambio de equipo? → Sí, dividir**: se abre un tramo
+     nuevo con los equipos actuales y desde ahí reparte de nuevo a quien haga falta.
+7. **Cerrar** cuando acabe la votación.
 7. Cada jugador entra, vota a los demás (1–10) y el ranking se actualiza solo.
 
 ---
@@ -332,3 +393,47 @@ update public.players set can_vote = false where name = 'Nombre';
 - Probar en móvil real: 360 px de ancho es el objetivo mínimo.
 - No introducir dependencias ni build si no es imprescindible: la simplicidad del despliegue en Pages es
   una decisión, no un descuido.
+- Toda regla nueva (ventana de votación, tramos) va también en la base: la interfaz solo la explica.
+
+---
+
+## 11. Migraciones y pruebas
+
+**Estado: aplicadas en producción el 5/11/2026** (proyecto `sarbskubgajtftfthanl`), en orden 01 → 02.
+Comprobado después: una sola firma por función, `appearances` con clave `(match_id, player_id, segment)`
+y las cuatro vistas respondiendo. Al pasar la clave a tres columnas hubo que quitar las dos claves
+foráneas de `votes` hacia `appearances` (Postgres no deja cambiar la PK con ellas colgando); su
+integridad la impone `cast_vote`, y se restauró la referencia de `votes` a `players` y `matches`.
+
+- El esquema de producción sigue sin build: se aplica a mano en Supabase → SQL Editor.
+- Las migraciones están en `supabase/migrations/` y son **idempotentes**. Orden obligatorio:
+  1. `20261105_01_vote_window.sql` — `kickoff_at`, ventana de votación y `match_summary`.
+  2. `20261105_02_team_splits.sql` — `appearances.segment`, RPCs de tramos y vistas de jugador.
+- **La 02 depende de la 01** (usa `kickoff_at`). Si algo falla, el `begin … commit` deja todo como estaba.
+- Antes de aplicarlas en producción conviene revisar las firmas reales de las funciones en Supabase. Las
+  migraciones recrean `cast_vote`, `admin_create_match`, `admin_set_match_date`, `admin_set_lineup`,
+  `admin_set_goals` y las cuatro vistas; el resto de RPCs no se toca.
+- Si en producción hubiera dos versiones de una misma función (una vieja con otros tipos), PostgREST
+  respondería «Could not choose the best candidate function». Se comprueba así, y debe salir **una fila
+  por nombre**:
+
+```sql
+select p.proname, pg_get_function_identity_arguments(p.oid) as firma
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public'
+  and p.proname in ('cast_vote','admin_create_match','admin_set_match_date','admin_set_lineup','admin_set_goals')
+order by 1;
+```
+- Pruebas (no tocan producción):
+
+```bash
+cd tests
+npm install        # solo la primera vez (PGlite)
+npm test           # reglas puras + SQL real en un Postgres de mentira
+```
+
+- `tests/sql/base-schema.sql` es una reconstrucción documentada del esquema de producción (HANDOFF §4)
+  **solo para las pruebas**; no se aplica nunca en Supabase.
+- La interfaz se comprobó además en un navegador con un cliente de Supabase simulado (datos de prueba):
+  inicio, ficha con tramos, aviso de votación y editor de alineación. No hay captura guardada.

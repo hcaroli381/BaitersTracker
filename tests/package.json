@@ -1,0 +1,12 @@
+{
+  "name": "baiters-tracker-tests",
+  "private": true,
+  "type": "module",
+  "description": "Pruebas locales de BaitersTracker (no forman parte de la web publicada).",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.17"
+  }
+}

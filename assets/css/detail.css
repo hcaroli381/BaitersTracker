@@ -75,6 +75,72 @@
   margin-bottom: 14px;
 }
 
+/* Aviso de la ventana de votación */
+.notice {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-left: 2px solid var(--acid);
+  background: var(--s1);
+  color: var(--dim);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Tramos del partido cuando hubo cambio de equipo */
+.cuts {
+  display: grid;
+}
+
+.cut {
+  display: grid;
+  gap: 6px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.cut__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cut__n {
+  color: var(--faint);
+  font-family: var(--num);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.cut__score {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--num);
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.cut__score i {
+  display: block;
+  width: 10px;
+  height: 1px;
+  background: var(--line-2);
+}
+
+.cut__row {
+  color: var(--dim);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.cut__row b {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .teams {
   display: grid;
   gap: 26px;

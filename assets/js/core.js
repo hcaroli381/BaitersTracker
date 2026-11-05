@@ -1,5 +1,11 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { getConfig, KEYS } from './config.js';
+import { kickoffDate, voteOpensDate, votesOpen, VOTE_DELAY_MS } from './rules.js';
+
+/* Reglas puras, reexportadas para que las vistas no importen de dos sitios. */
+export { kickoffDate, voteOpensDate, votesOpen, VOTE_DELAY_MS };
+import { msUntilVotesOpen } from './rules.js';
+export { msUntilVotesOpen };
 
 /* ------------------------------------------------------------------ */
 /* Cliente                                                             */
@@ -166,6 +172,44 @@ export function todayISO() {
 }
 
 /* ------------------------------------------------------------------ */
+/* Horas                                                               */
+/* ------------------------------------------------------------------ */
+
+/** "21:05" a partir de un Date o de una marca ISO. */
+export function timeLabel(value) {
+  const d = value instanceof Date ? value : new Date(value);
+  if (!d || Number.isNaN(d.getTime())) return '';
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/** "sáb 8 nov, 21:05". */
+export function dateTimeLabel(value) {
+  const d = value instanceof Date ? value : new Date(value);
+  if (!d || Number.isNaN(d.getTime())) return '';
+  return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}, ${timeLabel(d)}`;
+}
+
+/** Valor para <input type="datetime-local"> en hora local. */
+export function localInputValue(value) {
+  const d = value instanceof Date ? value : new Date(value);
+  if (!d || Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/** Convierte el valor de un datetime-local (hora local) en ISO UTC. */
+export function localInputToISO(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/** "Abre el sáb 8 nov, 22:00": cuándo empieza a poderse votar. */
+export function voteOpensLabel(match) {
+  const opens = voteOpensDate(match);
+  return opens ? dateTimeLabel(opens) : '';
+}
+
+/* ------------------------------------------------------------------ */
 /* Foto de jugador                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -258,6 +302,7 @@ export function sheet({ title, subtitle = '', body = '', actions = [] }) {
       <div class="sheet__body">${body}</div>
       ${actions.length ? '<footer class="sheet__foot"></footer>' : ''}
     </div>`;
+  stagger(wrap);
   const foot = wrap.querySelector('.sheet__foot');
   actions.forEach((a) => {
     const btn = document.createElement('button');
@@ -306,4 +351,66 @@ export function href(name, id) {
 
 export function navigate(name, id) {
   location.hash = href(name, id);
+}
+
+/* ------------------------------------------------------------------ */
+/* Movimiento                                                          */
+/* ------------------------------------------------------------------ */
+
+/** Marca una cifra para que `animateCounts` la cuente al entrar. */
+export function count(value) {
+  return Number.isFinite(value) ? ' data-count="' + value + '"' : '';
+}
+
+/** Contenedores cuyos hijos entran en cascada (ver motion.css). */
+const STAGGER_TARGETS = [
+  '.view > *',
+  '.sheet__body > *',
+  '.plist > li',
+  '.mlist > li',
+  '.hlist > li',
+  '.squad > *',
+  '.teams > .team',
+  '.cuts > .cut',
+  '.adminlist > .adminrow',
+  '.voters > .voters__row',
+  '.lineupEdit > .lineupEdit__row',
+  '.scale > .scale__btn',
+];
+
+/**
+ * Reparte `--i` (0–11) por los hijos de listas y bloques para que
+ * motion.css los anime en cascada. Sin llamada, entran todos a la vez.
+ */
+export function stagger(root = document) {
+  STAGGER_TARGETS.forEach((selector) => {
+    root.querySelectorAll(selector).forEach((el, index) => {
+      if (!el.style.getPropertyValue('--i')) el.style.setProperty('--i', String(Math.min(index, 11)));
+    });
+  });
+}
+
+/** Cuenta una cifra de 0 al valor final en ~0,6 s. */
+export function animateCounts(root = document) {
+  const nodes = root.querySelectorAll('[data-count]');
+  if (!nodes.length) return;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  nodes.forEach((el) => {
+    const target = Number(el.dataset.count);
+    if (!Number.isFinite(target)) return;
+    const duration = 620;
+    const started = performance.now();
+    const step = (now) => {
+      const t = Math.min(1, (now - started) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = String(Math.round(target * eased));
+      if (t < 1) requestAnimationFrame(step);
+    };
+    el.textContent = '0';
+    requestAnimationFrame(step);
+    // Red de seguridad: si la pestaña se oculta, el número no se queda a medias.
+    setTimeout(() => {
+      el.textContent = String(target);
+    }, duration + 400);
+  });
 }

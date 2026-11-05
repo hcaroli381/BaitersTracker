@@ -20,6 +20,10 @@ import {
   toast,
   errorMessage,
   href,
+  votesOpen,
+  voteOpensLabel,
+  count,
+  stagger,
 } from './core.js';
 import {
   sortedBy,
@@ -77,6 +81,8 @@ function voteStatus(detail, targetId) {
   const mine = myVotes.get(targetId) ?? null;
   if (summary.status !== 'open') return { can: false, reason: 'closed', mine };
   if (!me) return { can: false, reason: 'nologin', mine };
+  // La base lo impone igual: aquí solo se explica en pantalla.
+  if (!votesOpen(summary)) return { can: false, reason: 'notyet', mine };
   const meP = playerById(me);
   if (meP?.can_vote === false) return { can: false, reason: 'wildcard', mine };
   if (!lineup.some((l) => l.player_id === me)) return { can: false, reason: 'notplayed', mine };
@@ -93,11 +99,20 @@ const REASONS = {
   done: 'Ya has votado a este jugador. Solo el admin puede corregir una nota.',
 };
 
+/** Motivo por el que no se puede votar. La ventana necesita la fecha del partido. */
+function reasonText(reason, match) {
+  if (reason === 'notyet') {
+    return `La votación abre el ${voteOpensLabel(match)}: una hora después del inicio.`;
+  }
+  return REASONS[reason] || '';
+}
+
 /** Cuántos jugadores puede votar quien mira y cuántos lleva. null si no puede votar en este partido. */
 function voteProgress(detail) {
   const { summary, lineup, myVotes } = detail;
   const me = state.me;
   if (summary.status !== 'open' || !me) return null;
+  if (!votesOpen(summary)) return null;
   const meP = playerById(me);
   if (meP?.can_vote === false || !lineup.some((l) => l.player_id === me)) return null;
   const targets = lineup.filter((l) => l.player_id !== me || state.allowSelfVote);
@@ -123,7 +138,15 @@ export async function home() {
   const best = sortedBy('rating').filter((p) => (p.stats?.played || 0) > 0 && p.stats.avg_rating != null).slice(0, 5);
 
   let todo = '';
-  if (next && progress && progress.done < progress.total) {
+  if (next && !votesOpen(next)) {
+    todo = `<a class="todo todo--quiet" href="${href('partidos', next.id)}">
+      <span class="todo__text">
+        <b>La votación todavía no está abierta</b>
+        <span>Abre el ${esc(voteOpensLabel(next))}, una hora después del inicio</span>
+      </span>
+      <span class="btn btn--ghost btn--sm">Ver</span>
+    </a>`;
+  } else if (next && progress && progress.done < progress.total) {
     const left = progress.total - progress.done;
     todo = `<a class="todo" href="${href('partidos', next.id)}">
       <span class="todo__text">
@@ -149,9 +172,9 @@ export async function home() {
           ${pill('Último partido')}
         </div>
         <div class="score__board">
-          <span class="score__n">${num(last.goals_a, 0)}</span>
+          <span class="score__n"${count(last.goals_a)}>${num(last.goals_a, 0)}</span>
           <span class="score__sep" aria-hidden="true"></span>
-          <span class="score__n">${num(last.goals_b, 0)}</span>
+          <span class="score__n"${count(last.goals_b)}>${num(last.goals_b, 0)}</span>
           <span class="score__who">${teamTag('A')}</span>
           <span></span>
           <span class="score__who">${teamTag('B')}</span>
@@ -297,6 +320,7 @@ export async function ranking() {
             b.setAttribute('aria-selected', String(b === btn));
           });
           slot.innerHTML = boardHTML(btn.dataset.sort, btn.dataset.dir);
+          stagger(slot);
         });
       });
     },
@@ -347,11 +371,14 @@ function teamBlock(code, rows, goals, detail) {
           const p = row.player;
           const st = voteStatus(detail, p.id);
           const votes = detail.votesByTarget.get(p.id) || [];
+          const moves = row.switched
+            ? row.stints.map((s) => `${s.segment}º ${teamName(s.team)}`).join(' · ')
+            : '';
           return `<li><button class="lrow" type="button" data-player="${esc(p.id)}">
             ${avatar(p, 44)}
             <span class="lrow__who">
               <b class="lrow__name">${esc(p.name)}</b>
-              <span class="lrow__sub">${esc(plural(row.goals ?? 0, 'gol', 'goles'))}</span>
+              <span class="lrow__sub">${esc(plural(row.goals ?? 0, 'gol', 'goles'))}${moves ? ` · ${esc(moves)}` : ''}</span>
               ${st.can ? '<span class="pill pill--acid">Falta tu nota</span>' : st.mine != null ? `<span class="pill">Tu nota: ${st.mine}</span>` : ''}
             </span>
             <span class="lrow__end">
@@ -369,6 +396,36 @@ function teamBlock(code, rows, goals, detail) {
   </div>`;
 }
 
+/**
+ * Tramos de un partido con cambio de equipo: quién jugaba en cada lado
+ * y cómo iba el marcador en ese tramo. Sin cambios no se enseña nada.
+ */
+function cutsBlock(detail) {
+  if (!detail.segmentCount || detail.segmentCount < 2) return '';
+
+  const names = (list) =>
+    list.length ? list.map((p) => `${esc(p.name)}${p.goals ? ` (${p.goals})` : ''}`).join(', ') : '—';
+
+  return `${section(
+    'Cambios de equipo',
+    `<span class="meta">${esc(plural(detail.segmentCount - 1, 'cambio', 'cambios'))}</span>`
+  )}
+    <ol class="cuts">
+      ${detail.segments
+        .map(
+          (seg) => `<li class="cut">
+            <div class="cut__head">
+              <span class="cut__n">${seg.segment === 1 ? 'Antes del cambio' : `Tramo ${seg.segment}`}</span>
+              <span class="cut__score">${seg.goals.a}<i aria-hidden="true"></i>${seg.goals.b}</span>
+            </div>
+            <p class="cut__row"><b>${esc(teamName('A'))}</b> ${names(seg.A)}</p>
+            <p class="cut__row"><b>${esc(teamName('B'))}</b> ${names(seg.B)}</p>
+          </li>`
+        )
+        .join('')}
+    </ol>`;
+}
+
 export async function matchView(id) {
   const detail = await matchDetail(id);
 
@@ -383,6 +440,7 @@ export async function matchView(id) {
 
   const { summary, lineup, mvp } = detail;
   const open = summary.status === 'open';
+  const waiting = open && !votesOpen(summary);
   const prog = voteProgress(detail);
   const pct = prog && prog.total ? Math.round((prog.done / prog.total) * 100) : 0;
 
@@ -395,9 +453,9 @@ export async function matchView(id) {
         ${pill(open ? 'Votación abierta' : 'Cerrado', open ? 'acid' : '')}
       </div>
       <div class="score__board">
-        <span class="score__n">${num(summary.goals_a, 0)}</span>
+        <span class="score__n"${count(summary.goals_a)}>${num(summary.goals_a, 0)}</span>
         <span class="score__sep" aria-hidden="true"></span>
-        <span class="score__n">${num(summary.goals_b, 0)}</span>
+        <span class="score__n"${count(summary.goals_b)}>${num(summary.goals_b, 0)}</span>
         <span class="score__who">${teamTag('A')}</span>
         <span></span>
         <span class="score__who">${teamTag('B')}</span>
@@ -412,6 +470,12 @@ export async function matchView(id) {
           : ''
       }
     </section>
+
+    ${
+      waiting
+        ? `<p class="notice">La votación abre el ${esc(voteOpensLabel(summary))}. Hasta entonces no se puede votar; los equipos sí se pueden tocar.</p>`
+        : ''
+    }
 
     ${
       prog
@@ -429,9 +493,10 @@ export async function matchView(id) {
       lineup.length
         ? `<p class="hint hint--tap">Toca a un jugador para ${open ? 'votarle y ' : ''}ver qué nota le ha puesto cada uno.</p>
            <div class="teams">
-             ${teamBlock('A', lineup.filter((l) => l.team === 'A'), summary.goals_a, detail)}
-             ${teamBlock('B', lineup.filter((l) => l.team === 'B'), summary.goals_b, detail)}
-           </div>`
+             ${teamBlock('A', lineup.filter((l) => l.startTeam === 'A'), summary.goals_a, detail)}
+             ${teamBlock('B', lineup.filter((l) => l.startTeam === 'B'), summary.goals_b, detail)}
+           </div>
+           ${cutsBlock(detail)}`
         : empty('Sin alineación', 'El admin todavía no ha publicado quién juega este partido.')
     }
   </div>`;
@@ -445,6 +510,7 @@ export async function matchView(id) {
           const next = await matchView(id);
           root.innerHTML = next.html;
           next.mount(root);
+          stagger(root);
         } catch (err) {
           toast(errorMessage(err), 'error');
         }
@@ -484,8 +550,8 @@ function openPlayerSheet(detail, row, refresh) {
         </div>
         <p class="hint">No se puede cambiar después. Si te equivocas, solo el admin puede corregirla.</p>
       </div>`
-    : REASONS[st.reason]
-    ? `<p class="vs__note">${esc(REASONS[st.reason])}</p>`
+    : reasonText(st.reason, detail.summary)
+    ? `<p class="vs__note">${esc(reasonText(st.reason, detail.summary))}</p>`
     : '';
 
   const voters = votes.length

@@ -1,0 +1,230 @@
+/* ==================================================================
+   BaitersTracker — movimiento
+   Capa de animación sobre el sistema Dark Editorial. No cambia nada
+   de la estética: mismos colores, misma tipografía, misma composición.
+
+   Reglas:
+   - Solo `transform` y `opacity` (barato en móvil, sin repintados).
+   - Nada de sombras, degradados ni colores nuevos.
+   - `animation-fill-mode: backwards` (no `both`): al terminar, el
+     elemento vuelve a sus estilos normales y el `:active` sigue
+     funcionando.
+   - Todo se apaga con `prefers-reduced-motion`.
+   ================================================================== */
+
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.42, 0.64, 1);
+  --stagger: 42ms;
+}
+
+@keyframes bt-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 16px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bt-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.74);
+  }
+  62% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes bt-wipe {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes bt-grow {
+  from {
+    width: 0;
+  }
+}
+
+@keyframes bt-photo {
+  from {
+    opacity: 0;
+    transform: scale(1.05);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bt-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* Entrada en cascada                                                */
+/* `--i` lo pone `stagger()` en core.js (0–11).                      */
+/* ---------------------------------------------------------------- */
+
+.view > *,
+.sheet__body > *,
+.plist > li,
+.mlist > li,
+.hlist > li,
+.squad > *,
+.teams > .team,
+.cuts > .cut,
+.adminlist > .adminrow,
+.voters > .voters__row,
+.lineupEdit > .lineupEdit__row,
+.scale > .scale__btn {
+  animation: bt-rise 0.44s var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+
+.squad {
+  --stagger: 34ms;
+}
+
+.adminlist {
+  --stagger: 28ms;
+}
+
+.scale {
+  --stagger: 24ms;
+}
+
+/* ---------------------------------------------------------------- */
+/* Marcador                                                          */
+/* ---------------------------------------------------------------- */
+
+.score__board > .score__n:nth-child(1) {
+  animation: bt-pop 0.5s var(--ease-spring) backwards;
+}
+
+.score__board > .score__n:nth-child(3) {
+  animation: bt-pop 0.5s var(--ease-spring) backwards;
+  animation-delay: 0.1s;
+}
+
+.score__sep {
+  animation: bt-wipe 0.46s var(--ease-out) backwards;
+  animation-delay: 0.16s;
+  transform-origin: center;
+}
+
+.mvp {
+  animation: bt-rise 0.46s var(--ease-out) backwards;
+  animation-delay: 0.18s;
+}
+
+/* La nota y los chips dan un golpe al aparecer */
+.rate {
+  animation: bt-pop 0.32s var(--ease-spring) backwards;
+  animation-delay: calc(var(--i, 0) * 30ms);
+}
+
+/* ---------------------------------------------------------------- */
+/* Progreso de votos                                                 */
+/* ---------------------------------------------------------------- */
+
+.prog__bar i {
+  animation: bt-grow 0.68s var(--ease-out) backwards;
+}
+
+/* ---------------------------------------------------------------- */
+/* Fotos                                                             */
+/* ---------------------------------------------------------------- */
+
+.ph__img {
+  animation: bt-photo 0.55s var(--ease-out) backwards;
+}
+
+/* ---------------------------------------------------------------- */
+/* Arranque y navegación                                             */
+/* ---------------------------------------------------------------- */
+
+.boot__mark {
+  animation: bt-breathe 1.7s var(--ease) infinite;
+}
+
+.dock__item.is-on,
+.topnav__item.is-on {
+  animation: bt-pop 0.28s var(--ease-spring) backwards;
+}
+
+/* ---------------------------------------------------------------- */
+/* Hoja inferior: la entrada ya existe; aquí solo el muelle          */
+/* ---------------------------------------------------------------- */
+
+.sheet__panel {
+  transition-timing-function: var(--ease-out);
+}
+
+/* ---------------------------------------------------------------- */
+/* Pulsación en móvil                                                */
+/* ---------------------------------------------------------------- */
+
+.prow,
+.mrow,
+.lrow,
+.hrow,
+.scard,
+.cut,
+.attendance,
+.dock__item {
+  transition: transform 0.14s var(--ease-out);
+}
+
+.prow:active,
+.mrow:active,
+.lrow:active,
+.hrow:active,
+.scard:active,
+.cut:active,
+.dock__item:active {
+  transform: scale(0.985);
+}
+
+.rate:active,
+.pill:active,
+.seg__btn:active,
+.iconbtn:active {
+  transform: scale(0.94);
+}
+
+/* ---------------------------------------------------------------- */
+/* Movimiento reducido: nada se mueve, nada se retrasa                */
+/* ---------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-delay: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    transition-delay: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

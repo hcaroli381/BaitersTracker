@@ -15,6 +15,12 @@ import {
   href,
   teamName,
   plural,
+  timeLabel,
+  kickoffDate,
+  voteOpensLabel,
+  votesOpen,
+  localInputValue,
+  localInputToISO,
 } from './core.js';
 import { KEYS } from './config.js';
 import { adminRpc, checkAdmin, uploadPlayerPhoto, clearPlayerPhoto, loadCore, playerById } from './data.js';
@@ -344,30 +350,38 @@ function matchesTab(matches) {
       <h2 class="subhead">Nuevo partido</h2>
       <div class="adminform__row">
         <input class="input" type="date" name="date" value="${todayISO()}" required>
+        <input class="input" type="time" name="time" value="21:00" step="300" required aria-label="Hora de inicio">
         <button class="btn btn--acid" type="submit">Crear</button>
       </div>
+      <p class="hint">La votación abre una hora después de la hora de inicio. Los equipos se pueden poner antes, durante o después del partido.</p>
     </form>
 
     <ul class="adminlist">
       ${matches
-        .map(
-          (m) => `<li class="adminrow" data-match="${esc(m.id)}">
+        .map((m) => {
+          const kick = kickoffDate(m);
+          const openVotes = votesOpen(m);
+          return `<li class="adminrow" data-match="${esc(m.id)}">
             <div class="adminrow__date"><b>${dateParts(m.played_on).day}</b>${dateParts(m.played_on).month}</div>
             <div class="adminrow__who">
               <span class="adminrow__name">Oscuros ${num(m.goals_a, 0)}, Claros ${num(m.goals_b, 0)}</span>
               <span class="adminrow__meta">
                 <span class="chip ${m.status === 'open' ? 'chip--acid' : 'chip--dim'}">${m.status === 'open' ? 'Abierto' : 'Cerrado'}</span>
+                <span class="chip chip--dim">${esc(kick ? timeLabel(kick) : 'sin hora')}</span>
+                ${m.segments > 1 ? `<span class="chip chip--warn">${m.segments} tramos</span>` : ''}
+                <span class="chip ${openVotes ? 'chip--acid' : 'chip--warn'}">${openVotes ? 'Votación abierta' : `Vota ${esc(voteOpensLabel(m))}`}</span>
                 <span class="meta">${esc(longDate(m.played_on))}</span>
               </span>
             </div>
             <div class="adminrow__actions">
               <button class="iconbtn" type="button" data-mact="lineup">Alineación</button>
+              <button class="iconbtn" type="button" data-mact="cut">¿Cambio de equipo?</button>
               <button class="iconbtn" type="button" data-mact="status">${m.status === 'open' ? 'Cerrar' : 'Reabrir'}</button>
-              <button class="iconbtn" type="button" data-mact="date">Fecha</button>
+              <button class="iconbtn" type="button" data-mact="date">Fecha y hora</button>
               <button class="iconbtn iconbtn--danger" type="button" data-mact="delete">Borrar</button>
             </div>
-          </li>`
-        )
+          </li>`;
+        })
         .join('')}
     </ul>`;
 }
@@ -376,8 +390,10 @@ function mountMatches(root) {
   root.querySelector('#newMatch')?.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const date = ev.target.date.value;
+    const time = ev.target.time.value || '21:00';
+    const kickoff = localInputToISO(`${date}T${time}`);
     try {
-      await adminRpc('admin_create_match', { p_pw: adminPassword(), p_date: date });
+      await adminRpc('admin_create_match', { p_pw: adminPassword(), p_date: date, p_kickoff: kickoff });
       toast('Partido creado');
       rerenderAdmin();
     } catch (e) {
@@ -396,6 +412,9 @@ function mountMatches(root) {
       case 'lineup':
         openLineup(match);
         break;
+      case 'cut':
+        openLineup(match, { askSplit: true });
+        break;
       case 'status':
         guard('admin_set_match_status', {
           p_pw: adminPassword(),
@@ -404,7 +423,7 @@ function mountMatches(root) {
         });
         break;
       case 'date':
-        askDate(match);
+        askSchedule(match);
         break;
       case 'delete':
         confirmAction('Eliminar partido', 'Se borrarán alineaciones, goles y votos de ese partido.', () =>
@@ -417,21 +436,27 @@ function mountMatches(root) {
   });
 }
 
-function askDate(match) {
+function askSchedule(match) {
   const s = sheet({
-    title: 'Fecha del partido',
-    body: `<label class="field"><span class="field__label">Día</span>
-      <input class="input" type="date" id="dateInput" value="${esc(match.played_on)}"></label>`,
+    title: 'Fecha y hora',
+    subtitle: 'La votación abre una hora después del inicio',
+    body: `<label class="field"><span class="field__label">Inicio programado</span>
+      <input class="input" type="datetime-local" id="kickoffInput"
+        value="${esc(localInputValue(kickoffDate(match)))}"></label>`,
     actions: [
       { label: 'Cancelar', variant: 'btn--ghost', onClick: () => s.close() },
       {
         label: 'Guardar',
         variant: 'btn--acid',
         onClick: async () => {
-          const value = s.el.querySelector('#dateInput').value;
-          if (!value) return;
+          const iso = localInputToISO(s.el.querySelector('#kickoffInput').value);
+          if (!iso) return;
           try {
-            await adminRpc('admin_set_match_date', { p_pw: adminPassword(), p_match: match.id, p_date: value });
+            await adminRpc('admin_set_match_kickoff', {
+              p_pw: adminPassword(),
+              p_match: match.id,
+              p_kickoff: iso,
+            });
             s.close();
             toast('Fecha actualizada');
             rerenderAdmin();
@@ -444,7 +469,18 @@ function askDate(match) {
   });
 }
 
-async function openLineup(match) {
+/**
+ * Editor de alineación. Trabaja sobre un tramo: si el partido tuvo cambios de
+ * equipo hay pestañas para cada tramo y cada uno guarda sus equipos y goles.
+ * `opts.askSplit` abre la pregunta «¿Hubo cambio de equipo?» directamente.
+ */
+async function openLineup(match, opts = {}) {
+  const pw = adminPassword();
+  const { matchDetail } = await import('./data.js');
+  let detail = null;
+  let current = 1;
+  let askSplit = Boolean(opts.askSplit);
+
   const s = sheet({
     title: 'Alineación',
     subtitle: longDate(match.played_on),
@@ -463,88 +499,179 @@ async function openLineup(match) {
     ],
   });
 
-  const { matchDetail } = await import('./data.js');
-  let detail;
-  try {
-    detail = await matchDetail(match.id);
-  } catch (e) {
-    s.el.querySelector('.sheet__body').innerHTML = `<p class="formerr">${esc(errorMessage(e))}</p>`;
-    return;
-  }
-
-  const assigned = new Map((detail?.lineup || []).map((l) => [l.player_id, l]));
-  const pw = adminPassword();
+  const sheetBody = s.el.querySelector('.sheet__body');
   const players = state.players.filter((p) => p.active !== false);
 
-  const body = `<p class="hint">Elige equipo y goles de cada uno. Se guarda al instante.</p>
-    <ul class="lineupEdit">
-      ${players
-        .map((p) => {
-          const row = assigned.get(p.id);
-          return `<li class="lineupEdit__row" data-player="${esc(p.id)}">
-            <span class="lineupEdit__name">${esc(p.name)}<b>${p.shirt_number ? pad2(p.shirt_number) : ''}</b>${p.can_vote === false ? '<i class="lineupEdit__tag">comodín</i>' : ''}</span>
+  /** Equipo y goles de cada jugador en cada tramo. */
+  const stintIndex = () => {
+    const map = new Map();
+    (detail?.lineup || []).forEach((row) => {
+      row.stints.forEach((st) => map.set(`${row.player_id}:${st.segment}`, st));
+    });
+    return map;
+  };
+
+  const totalGoals = (playerId) =>
+    detail?.lineup.find((row) => row.player_id === playerId)?.goals ?? 0;
+
+  const askBlock = () => `<div class="askcut">
+      <b class="askcut__q">¿Hubo cambio de equipo?</b>
+      <p class="hint">El partido se divide en tramos. Se copian los equipos actuales como punto de partida y desde ahí rebalanceas a quien haga falta. Los goles de cada tramo cuentan para el equipo con el que se marcaron.</p>
+      <div class="askcut__row">
+        <button class="btn btn--ghost btn--sm" type="button" data-ask="no">No hubo</button>
+        <button class="btn btn--acid btn--sm" type="button" data-ask="yes">Sí, dividir</button>
+      </div>
+    </div>`;
+
+  const render = () => {
+    if (!detail) return;
+    const idx = stintIndex();
+    const total = detail.segmentCount || 1;
+    const onPitch = players.filter((p) => idx.has(`${p.id}:${current}`)).length;
+    const summary = detail.summary;
+
+    const tabs =
+      total > 1
+        ? `<div class="seg seg--segments" role="tablist" aria-label="Tramos del partido">
+            ${Array.from({ length: total }, (_, i) => i + 1)
+              .map(
+                (n) => `<button class="seg__btn${n === current ? ' is-on' : ''}" type="button" role="tab"
+                  aria-selected="${n === current}" data-seg="${n}">${n === 1 ? 'Antes' : `Tramo ${n}`}</button>`
+              )
+              .join('')}
+          </div>`
+        : '';
+
+    const rows = players
+      .map((p) => {
+        const st = idx.get(`${p.id}:${current}`);
+        const prev = current > 1 ? idx.get(`${p.id}:${current - 1}`) : null;
+        const moved = st && prev && st.team !== prev.team;
+        const sum = totalGoals(p.id);
+        return `<li class="lineupEdit__row" data-player="${esc(p.id)}">
+            <span class="lineupEdit__name">${esc(p.name)}<b>${p.shirt_number ? pad2(p.shirt_number) : ''}</b>${p.can_vote === false ? '<i class="lineupEdit__tag">comodín</i>' : ''}${moved ? `<i class="lineupEdit__tag lineupEdit__tag--move">ahora ${esc(teamName(st.team))}</i>` : ''}</span>
             <span class="lineupEdit__ctrl">
               <span class="lineupEdit__teams">
-                <button class="iconbtn${row?.team === 'A' ? ' is-on' : ''}" type="button" data-team="A">${teamName('A')}</button>
-                <button class="iconbtn${row?.team === 'B' ? ' is-on' : ''}" type="button" data-team="B">${teamName('B')}</button>
-                <button class="iconbtn${!row ? ' is-on' : ''}" type="button" data-team="">Fuera</button>
+                <button class="iconbtn${st?.team === 'A' ? ' is-on' : ''}" type="button" data-team="A">${teamName('A')}</button>
+                <button class="iconbtn${st?.team === 'B' ? ' is-on' : ''}" type="button" data-team="B">${teamName('B')}</button>
+                <button class="iconbtn${!st ? ' is-on' : ''}" type="button" data-team="">Fuera</button>
               </span>
               <span class="stepper" aria-label="Goles">
                 <button class="iconbtn" type="button" data-goal="-1" aria-label="Quitar un gol">−</button>
-                <b data-goals>${row?.goals ?? 0}</b>
+                <b data-goals>${st?.goals ?? 0}</b>
                 <button class="iconbtn" type="button" data-goal="1" aria-label="Añadir un gol">+</button>
               </span>
+              ${total > 1 && sum > (st?.goals ?? 0) ? `<span class="lineupEdit__sum">total ${sum}</span>` : ''}
             </span>
           </li>`;
-        })
-        .join('')}
-    </ul>`;
+      })
+      .join('');
 
-  const sheetBody = s.el.querySelector('.sheet__body');
-  sheetBody.innerHTML = body;
+    sheetBody.innerHTML = `
+      ${tabs}
+      ${askSplit ? askBlock() : ''}
+      <div class="lineupTools">
+        <span class="meta">${total > 1 ? `Tramo ${current} de ${total}` : 'Sin cambios de equipo'}, ${plural(onPitch, 'jugador', 'jugadores')} · Oscuros ${num(summary.goals_a, 0)}–${num(summary.goals_b, 0)} Claros</span>
+        ${askSplit ? '' : `<button class="iconbtn" type="button" data-split>${total > 1 ? '¿Hubo otro cambio?' : '¿Hubo cambio de equipo?'}</button>`}
+        ${total > 1 && !askSplit ? '<button class="iconbtn iconbtn--danger" type="button" data-undo title="Deshacer el último cambio de equipo">Deshacer cambio</button>' : ''}
+      </div>
+      <p class="hint">Elige equipo y goles de cada uno. Se guarda al instante, también con el partido cerrado.</p>
+      <ul class="lineupEdit">${rows}</ul>`;
+  };
 
-  const goals = new Map(players.map((p) => [p.id, assigned.get(p.id)?.goals ?? 0]));
-  const teams = new Map(players.map((p) => [p.id, assigned.get(p.id)?.team ?? null]));
+  const reload = async (segment) => {
+    detail = await matchDetail(match.id);
+    const total = detail?.segmentCount || 1;
+    current = Math.min(Math.max(1, segment ?? current), total);
+    render();
+  };
+
+  try {
+    await reload(opts.segment);
+    // Al abrir, el tramo que interesa es el último: es donde se rebalancea.
+    current = Math.min(opts.segment || detail.segmentCount || 1, detail.segmentCount || 1);
+    render();
+  } catch (e) {
+    sheetBody.innerHTML = `<p class="formerr">${esc(errorMessage(e))}</p>`;
+    return;
+  }
 
   sheetBody.addEventListener('click', async (ev) => {
+    const ask = ev.target.closest('[data-ask]');
+    if (ask) {
+      if (ask.dataset.ask === 'no') {
+        askSplit = false;
+        render();
+        return;
+      }
+      try {
+        const segment = await adminRpc('admin_split_match', { p_pw: pw, p_match: match.id });
+        askSplit = false;
+        await reload(segment);
+        toast('Partido dividido: rebalancea los equipos');
+      } catch (e) {
+        toast(errorMessage(e), 'error');
+      }
+      return;
+    }
+
+    if (ev.target.closest('[data-split]')) {
+      askSplit = true;
+      render();
+      return;
+    }
+
+    if (ev.target.closest('[data-undo]')) {
+      try {
+        await adminRpc('admin_remove_segment', { p_pw: pw, p_match: match.id });
+        await reload(Math.max(1, current - 1));
+        toast('Último cambio deshecho');
+      } catch (e) {
+        toast(errorMessage(e), 'error');
+      }
+      return;
+    }
+
+    const tab = ev.target.closest('[data-seg]');
+    if (tab) {
+      current = Number(tab.dataset.seg);
+      render();
+      return;
+    }
+
     const row = ev.target.closest('.lineupEdit__row');
     if (!row) return;
     const playerId = row.dataset.player;
-
     const teamBtn = ev.target.closest('[data-team]');
     const goalBtn = ev.target.closest('[data-goal]');
 
     try {
       if (teamBtn) {
-        const team = teamBtn.dataset.team;
-        if (!team) {
-          teams.delete(playerId);
-        } else {
-          teams.set(playerId, team);
-        }
-        row.querySelectorAll('[data-team]').forEach((b) => b.classList.toggle('is-on', b === teamBtn));
         await adminRpc('admin_set_lineup', {
           p_pw: pw,
           p_match: match.id,
           p_player: playerId,
-          p_team: team || null,
+          p_team: teamBtn.dataset.team || null,
+          p_segment: current,
         });
+        await reload();
       }
 
       if (goalBtn) {
-        if (!teams.get(playerId)) {
+        const st = stintIndex().get(`${playerId}:${current}`);
+        if (!st) {
           toast('Asigna equipo antes de poner goles', 'error');
           return;
         }
-        const next = Math.max(0, (goals.get(playerId) || 0) + Number(goalBtn.dataset.goal));
-        goals.set(playerId, next);
-        row.querySelector('[data-goals]').textContent = next;
+        const next = Math.max(0, (st.goals || 0) + Number(goalBtn.dataset.goal));
         await adminRpc('admin_set_goals', {
           p_pw: pw,
           p_match: match.id,
           p_player: playerId,
           p_goals: next,
+          p_segment: current,
         });
+        await reload();
       }
     } catch (e) {
       toast(errorMessage(e), 'error');

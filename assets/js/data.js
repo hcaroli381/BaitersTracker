@@ -1,5 +1,12 @@
 import { sb, state, deviceToken, photoURL } from './core.js';
 import { getConfig } from './config.js';
+import {
+  groupAppearances,
+  segmentTeams,
+  segmentCount,
+  scoreFromAppearances,
+  voteSummary,
+} from './rules.js';
 
 /* ------------------------------------------------------------------ */
 /* Sesión                                                              */
@@ -124,17 +131,21 @@ export function nextMatch() {
 }
 
 /**
- * Detalle de un partido: alineación, notas medias y TODOS los votos (son visibles).
+ * Detalle de un partido: alineación por tramos, notas medias y TODOS los votos (son visibles).
+ *
+ * La alineación se lee de `appearances` (una fila por jugador y tramo) porque un partido
+ * puede tener cambios de equipo. `lineup` tiene una entrada por jugador con sus tramos;
+ * `segments` tiene los equipos de cada tramo para poder enseñarlos.
  * `votesByTarget`: Map(jugador → [{ voter, score }]) ordenado de mayor a menor nota.
  */
 export async function matchDetail(id) {
-  const [summary, lineup, votes] = await Promise.all([
+  const [summary, appearances, votes] = await Promise.all([
     sb().from('match_summary').select('*').eq('id', id).maybeSingle(),
-    sb().from('player_match').select('*').eq('match_id', id),
+    sb().from('appearances').select('player_id, segment, team, goals').eq('match_id', id),
     sb().from('votes').select('voter_id, target_id, score').eq('match_id', id),
   ]);
   if (summary.error) throw summary.error;
-  if (lineup.error) throw lineup.error;
+  if (appearances.error) throw appearances.error;
   if (votes.error) throw votes.error;
   if (!summary.data) return null;
 
@@ -149,19 +160,46 @@ export async function matchDetail(id) {
   });
   votesByTarget.forEach((list) => list.sort((a, b) => b.score - a.score));
 
-  const rows = (lineup.data || [])
-    .map((l) => ({ ...l, player: playerById(l.player_id) }))
-    .filter((l) => l.player)
+  const scores = voteSummary(votes.data || []);
+  const rows = [...groupAppearances(appearances.data || []).values()]
+    .map((entry) => ({
+      ...entry,
+      player: playerById(entry.player_id),
+      avg_score: scores.get(entry.player_id)?.avg ?? null,
+    }))
+    .filter((row) => row.player)
     .sort((a, b) => {
-      if (a.team !== b.team) return a.team < b.team ? -1 : 1;
+      const at = a.startTeam || '';
+      const bt = b.startTeam || '';
+      if (at !== bt) return at < bt ? -1 : 1;
       if ((b.goals ?? 0) !== (a.goals ?? 0)) return (b.goals ?? 0) - (a.goals ?? 0);
       return a.player.name.localeCompare(b.player.name);
     });
 
-  const scored = rows.filter((l) => l.avg_score != null).sort((a, b) => b.avg_score - a.avg_score);
+  const total = segmentCount(appearances.data || []);
+  const segments = Array.from({ length: total }, (_, i) => {
+    const teams = segmentTeams(appearances.data || [], i + 1);
+    const describe = (list) =>
+      list
+        .map((r) => {
+          const p = playerById(r.player_id);
+          return p ? { id: p.id, name: p.name, goals: Number(r.goals ?? 0) || 0 } : null;
+        })
+        .filter(Boolean);
+    return {
+      segment: i + 1,
+      A: describe(teams.A),
+      B: describe(teams.B),
+      goals: scoreFromAppearances([...teams.A, ...teams.B]),
+    };
+  });
+
+  const scored = rows.filter((r) => r.avg_score != null).sort((a, b) => b.avg_score - a.avg_score);
   return {
     summary: summary.data,
     lineup: rows,
+    segments,
+    segmentCount: total,
     myVotes,
     votesByTarget,
     votes: votes.data || [],
@@ -175,7 +213,7 @@ export async function matchDetail(id) {
 export async function playerHistory(playerId) {
   const { data, error } = await sb()
     .from('player_match')
-    .select('match_id, player_id, team, goals, status, gf, ga, avg_score, votes')
+    .select('match_id, player_id, team, goals, status, gf, ga, avg_score, votes, teams, stints')
     .eq('player_id', playerId);
   if (error) throw error;
 
