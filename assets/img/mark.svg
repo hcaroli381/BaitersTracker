@@ -1,4 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" fill="#0a0a0b"/>
-  <text x="32" y="45" text-anchor="middle" font-family="Arial Narrow, Arial, sans-serif" font-size="34" font-weight="700" fill="#ccff3f" letter-spacing="-1">BT</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#ccff3f"/><path d="M17 13h19c11 0 16 5 16 12 0 5-3 8-7 9.500 6 1.200 9 5 9 11 0 9-7 13-18 13H17V13zm12 10v8h6c3 0 5-1.500 5-4s-2-4-5-4h-6zm0 18v9h7c3.500 0 5.500-1.500 5.500-4.500S39.500 41 36 41h-7z" fill="#111803"/></svg>

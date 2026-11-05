@@ -76,31 +76,37 @@ export function playerById(id) {
   return state.players.find((p) => p.id === id) || null;
 }
 
+/** Valor numérico con el que se ordena cada ranking (null si no hay dato). */
+export function rawValue(player, key) {
+  const s = player.stats || {};
+  switch (key) {
+    case 'goals':
+      return s.goals ?? 0;
+    case 'mvps':
+      return s.mvps ?? 0;
+    case 'wins':
+      return s.wins ?? 0;
+    case 'rating':
+      return s.avg_rating == null ? null : Number(s.avg_rating);
+    case 'conceded':
+      return s.conceded_pm == null ? null : Number(s.conceded_pm);
+    default:
+      return 0;
+  }
+}
+
 export function sortedBy(key, dir = 'desc') {
   const rows = [...state.players].filter((p) => p.active !== false);
-  const val = (p) => {
-    const s = p.stats || {};
-    switch (key) {
-      case 'goals':
-        return s.goals ?? 0;
-      case 'mvps':
-        return s.mvps ?? 0;
-      case 'wins':
-        return s.wins ?? 0;
-      case 'rating':
-        return s.avg_rating ?? -1;
-      case 'conceded':
-        return s.conceded_pm ?? 999;
-      case 'played':
-        return s.played ?? 0;
-      default:
-        return 0;
-    }
-  };
   rows.sort((a, b) => {
-    const diff = dir === 'asc' ? val(a) - val(b) : val(b) - val(a);
+    const va = rawValue(a, key);
+    const vb = rawValue(b, key);
+    // sin dato: siempre al final
+    if (va == null && vb == null) return a.name.localeCompare(b.name);
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    const diff = dir === 'asc' ? va - vb : vb - va;
     if (diff !== 0) return diff;
-    return (val(b) - val(a)) || a.name.localeCompare(b.name);
+    return a.name.localeCompare(b.name);
   });
   return rows;
 }
@@ -110,13 +116,17 @@ export function lastClosedMatch() {
 }
 
 export function nextMatch() {
-  const today = new Date().toISOString().slice(0, 10);
-  const upcoming = state.matches
-    .filter((m) => m.status === 'open' && m.played_on >= today)
-    .sort((a, b) => (a.played_on > b.played_on ? 1 : -1));
-  return upcoming[0] || state.matches.find((m) => m.status === 'open') || null;
+  const open = state.matches.filter((m) => m.status === 'open');
+  const today = new Date();
+  const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const upcoming = open.filter((m) => m.played_on >= iso).sort((a, b) => (a.played_on > b.played_on ? 1 : -1));
+  return upcoming[0] || open[0] || null;
 }
 
+/**
+ * Detalle de un partido: alineación, notas medias y TODOS los votos (son visibles).
+ * `votesByTarget`: Map(jugador → [{ voter, score }]) ordenado de mayor a menor nota.
+ */
 export async function matchDetail(id) {
   const [summary, lineup, votes] = await Promise.all([
     sb().from('match_summary').select('*').eq('id', id).maybeSingle(),
@@ -128,17 +138,23 @@ export async function matchDetail(id) {
   if (votes.error) throw votes.error;
   if (!summary.data) return null;
 
-  const myVotes = new Map();
   const me = state.me;
+  const myVotes = new Map();
+  const votesByTarget = new Map();
   (votes.data || []).forEach((v) => {
     if (me && v.voter_id === me) myVotes.set(v.target_id, v.score);
+    const list = votesByTarget.get(v.target_id) || [];
+    list.push({ voter: v.voter_id, score: v.score });
+    votesByTarget.set(v.target_id, list);
   });
+  votesByTarget.forEach((list) => list.sort((a, b) => b.score - a.score));
 
   const rows = (lineup.data || [])
     .map((l) => ({ ...l, player: playerById(l.player_id) }))
     .filter((l) => l.player)
     .sort((a, b) => {
       if (a.team !== b.team) return a.team < b.team ? -1 : 1;
+      if ((b.goals ?? 0) !== (a.goals ?? 0)) return (b.goals ?? 0) - (a.goals ?? 0);
       return a.player.name.localeCompare(b.player.name);
     });
 
@@ -147,8 +163,12 @@ export async function matchDetail(id) {
     summary: summary.data,
     lineup: rows,
     myVotes,
+    votesByTarget,
     votes: votes.data || [],
-    mvp: summary.data.status === 'closed' && scored.length ? scored[0].player : null,
+    mvp:
+      summary.data.status === 'closed' && scored.length
+        ? { player: scored[0].player, score: scored[0].avg_score }
+        : null,
   };
 }
 

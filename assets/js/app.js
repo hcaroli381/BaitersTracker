@@ -1,15 +1,5 @@
 import { isConfigured, getConfig } from './config.js';
-import {
-  state,
-  esc,
-  pad2,
-  initials,
-  photoBlock,
-  toast,
-  errorMessage,
-  parseRoute,
-  href,
-} from './core.js';
+import { state, esc, pad2, photoBlock, avatar, toast, errorMessage, parseRoute, href } from './core.js';
 import { signIn, signOut, session, loadCore, whoAmI, claimPlayer, takenNumbers, playerById } from './data.js';
 import { home, ranking, matches, matchView, playerView, squad } from './views.js';
 import { adminView } from './admin.js';
@@ -19,6 +9,8 @@ let shellReady = false;
 
 /** Marcador: este navegador ha decidido no ser jugador (p. ej. el PC del admin). */
 const NO_PLAYER = 'bt.no.player';
+
+const WORDMARK = '<span class="wordmark">Baiters<span>Tracker</span></span>';
 
 /* ------------------------------------------------------------------ */
 /* Arranque                                                            */
@@ -44,14 +36,12 @@ async function boot() {
 /* ------------------------------------------------------------------ */
 
 function renderNoConfig() {
-  app.innerHTML = `<div class="gate gate--fatal">
+  app.innerHTML = `<div class="gate">
+    <div class="gate__head">${WORDMARK}</div>
     <div class="gate__panel">
-      <p class="kicker">Falta un dato</p>
-      <h2 class="gate__h2">Sin conexión</h2>
-      <p class="hint">La clave pública del proyecto no está en <b>assets/js/config.js</b>. Pégala ahí (campo <b>key</b>) y recarga la página.</p>
-      <div class="stack">
-        <button class="btn btn--acid" type="button" id="retry">Reintentar</button>
-      </div>
+      <h1 class="gate__h">Falta la clave de conexión</h1>
+      <p class="hint">La clave pública del proyecto no está en <code>assets/js/config.js</code>. Pégala en el campo <code>key</code> y recarga la página.</p>
+      <button class="btn btn--acid" type="button" id="retry">Reintentar</button>
     </div>
   </div>`;
   app.querySelector('#retry').addEventListener('click', () => location.reload());
@@ -64,22 +54,16 @@ function renderNoConfig() {
 function renderLogin() {
   const cfg = getConfig();
   app.innerHTML = `<div class="gate">
-    <div class="gate__art">
-      <span class="gate__kicker">Temporada 2026/27</span>
-      <h1 class="gate__title">BAITERS<br><span class="outline">TRACKER</span></h1>
-      <p class="gate__note">No es suerte, es bait</p>
-      <span class="gate__ghost" aria-hidden="true">BT</span>
+    <div class="gate__head">
+      <h1 class="gate__logo">Baiters<br><span>Tracker</span></h1>
+      <p class="gate__note">No es suerte, es bait.</p>
     </div>
-    <div class="gate__panel">
-      <p class="kicker">Acceso del grupo</p>
-      <h2 class="gate__h2">Entrar</h2>
-      <form id="loginForm" class="stack">
-        <label class="field"><span class="kicker">Contraseña</span>
-          <input class="input" name="password" type="password" autocomplete="current-password" enterkeyhint="go" required></label>
-        <button class="btn btn--acid" type="submit">Entrar</button>
-      </form>
+    <form id="loginForm" class="gate__panel">
+      <label class="field"><span class="field__label">Contraseña del grupo</span>
+        <input class="input" name="password" type="password" autocomplete="current-password" enterkeyhint="go" required></label>
+      <button class="btn btn--acid" type="submit">Entrar</button>
       <p class="formerr" id="loginErr" hidden></p>
-    </div>
+    </form>
   </div>`;
 
   const err = app.querySelector('#loginErr');
@@ -116,40 +100,40 @@ function renderPick() {
 
   app.innerHTML = `<div class="pick">
     <header class="pick__head">
-      <p class="kicker">Un dispositivo, un jugador</p>
-      <h1 class="pick__title">¿QUIÉN<br><span class="outline">ERES?</span></h1>
-      <p class="hint">Toca tu nombre y elige dorsal. Este móvil quedará vinculado a ti para votar; el admin puede liberarlo si te equivocas.</p>
+      ${WORDMARK}
+      <h1 class="title">¿Quién eres?</h1>
+      <p class="lede">Toca tu nombre y elige dorsal. Este móvil quedará vinculado a ti para votar; si te equivocas, el admin puede liberarlo.</p>
       ${
         wildcards
-          ? `<p class="hint">${wildcards === 1 ? 'Hay un comodín' : `Hay ${wildcards} comodines`} en la plantilla: juegan cuando faltamos, no votan y no salen en esta lista.</p>`
+          ? `<p class="hint">${wildcards === 1 ? 'Hay un comodín' : `Hay ${wildcards} comodines`} en la plantilla: juegan cuando falta gente, no votan y no salen en esta lista.</p>`
           : ''
       }
-      <button class="link link--mini" type="button" id="pickSkip">Entrar sin jugador · solo ver y administrar</button>
     </header>
     ${
       players.length
-        ? `<div class="pick__grid">
+        ? `<div class="squad">
             ${players
-              .map(
-                (p) => `<button class="pickcard" type="button" data-pick="${esc(p.id)}">
-                  <span class="pickcard__media">${photoBlock(p, 'ph--pick')}</span>
-                  <span class="pickcard__num">${p.shirt_number ? pad2(p.shirt_number) : initials(p.name)}</span>
-                  <span class="pickcard__name">${esc(p.name)}</span>
-                  ${p.device_hash ? '<span class="pickcard__tag">Ocupado</span>' : '<span class="pickcard__tag pickcard__tag--free">Libre</span>'}
-                </button>`
-              )
+              .map((p) => {
+                const taken = Boolean(p.device_hash);
+                return `<button class="scard${taken ? ' is-taken' : ''}" type="button" data-pick="${esc(p.id)}"${taken ? ' aria-disabled="true"' : ''}>
+                  <span class="scard__photo">${photoBlock(p)}${p.shirt_number ? `<span class="scard__num">${pad2(p.shirt_number)}</span>` : ''}</span>
+                  <b class="scard__name">${esc(p.name)}</b>
+                  <span class="scard__stat">${taken ? 'Ya está cogido' : 'Libre'}</span>
+                </button>`;
+              })
               .join('')}
           </div>`
         : `<p class="hint">No hay jugadores todavía. Pide al admin que los añada.</p>`
     }
     <footer class="pick__foot">
+      <button class="btn btn--ghost" type="button" id="pickSkip">Solo ver y administrar</button>
       <button class="btn btn--ghost" type="button" id="pickOut">Salir</button>
     </footer>
   </div>`;
 
   app.querySelectorAll('[data-pick]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      if (btn.querySelector('.pickcard__tag')?.textContent === 'Ocupado') {
+      if (btn.classList.contains('is-taken')) {
         toast('Ese jugador ya está cogido en otro móvil', 'error');
         return;
       }
@@ -182,10 +166,10 @@ function renderNumberStep(player) {
 
   app.innerHTML = `<div class="pick pick--num">
     <header class="pick__head">
-      <p class="kicker">Paso 2 de 2 · tu dorsal</p>
-      <h1 class="pick__title">TU<br><span class="outline">DORSAL</span></h1>
+      ${WORDMARK}
+      <h1 class="title">Elige tu dorsal</h1>
       <div class="pickstep">
-        <span class="pickstep__pic">${photoBlock(player, 'ph--chip')}</span>
+        ${avatar(player, 52)}
         <span class="pickstep__txt">
           <b>${esc(player.name)}</b>
           <span class="hint">Toca un número libre. Quedará a tu nombre y nadie más podrá cogerlo.</span>
@@ -201,7 +185,7 @@ function renderNumberStep(player) {
         )
         .join('')}
     </div>
-    <div class="pick__foot pick__foot--num">
+    <div class="pick__bar">
       <button class="btn btn--ghost" type="button" id="numBack">Cambiar jugador</button>
       <button class="btn btn--acid" type="button" id="numGo" disabled>Elige un número</button>
     </div>
@@ -241,7 +225,7 @@ function renderNumberStep(player) {
       /* el shell vuelve a cargar al entrar */
     }
     state.me = player.id;
-    toast(`${pad2(chosen)} es tu dorsal. Ya puedes votar.`);
+    toast(`El ${pad2(chosen)} es tu dorsal. Ya puedes votar.`);
     shellReady = false;
     renderShell();
   });
@@ -252,11 +236,11 @@ function renderNumberStep(player) {
 /* ------------------------------------------------------------------ */
 
 const NAV = [
-  { key: 'inicio', num: '01', label: 'Inicio' },
-  { key: 'ranking', num: '02', label: 'Ranking' },
-  { key: 'partidos', num: '03', label: 'Partidos' },
-  { key: 'plantilla', num: '04', label: 'Plantilla' },
-  { key: 'admin', num: '05', label: 'Admin' },
+  { key: 'inicio', label: 'Inicio' },
+  { key: 'ranking', label: 'Tabla' },
+  { key: 'partidos', label: 'Partidos' },
+  { key: 'plantilla', label: 'Plantilla' },
+  { key: 'admin', label: 'Admin' },
 ];
 
 async function start() {
@@ -283,15 +267,15 @@ async function start() {
   renderShell();
 }
 
-function meChip(compact = false) {
+function meChip() {
   if (!state.me) {
-    return `<span class="chip chip--dim">Sin jugador</span>`;
+    return `<button class="bar__me bar__me--none" type="button" data-claim>Vincular este móvil</button>`;
   }
   const me = playerById(state.me);
-  if (!me) return `<span class="chip chip--dim">Sin jugador</span>`;
-  return `<a class="me ${compact ? 'me--compact' : ''}" href="${href('jugador', me.id)}">
-    <span class="me__pic">${photoBlock(me, 'ph--chip')}</span>
-    <span class="me__txt"><span class="kicker">${compact ? 'Tú' : 'Tu dispositivo'}</span><b>${esc(me.name)}</b></span>
+  if (!me) return '';
+  return `<a class="bar__me" href="${href('jugador', me.id)}" aria-label="Tu perfil">
+    ${avatar(me, 36)}
+    <span class="bar__name">${esc(me.name.split(' ')[0])}</span>
   </a>`;
 }
 
@@ -299,42 +283,19 @@ function renderShell() {
   shellReady = true;
 
   app.innerHTML = `<div class="shell">
-    <aside class="rail">
-      <a class="brand" href="${href('inicio')}">
-        <span class="brand__mark" aria-hidden="true">BT</span>
-        <span class="brand__word">Baiters<br>Tracker</span>
-      </a>
-      <nav class="railnav" aria-label="Secciones">
-        ${NAV.map(
-          (n) => `<a class="railnav__item" data-nav="${n.key}" href="${href(n.key)}">
-            <span class="railnav__num">${n.num}</span>${n.label}
-          </a>`
-        ).join('')}
+    <header class="bar">
+      <a class="bar__brand" href="${href('inicio')}">${WORDMARK}</a>
+      <nav class="topnav" aria-label="Secciones">
+        ${NAV.map((n) => `<a class="topnav__item" data-nav="${n.key}" href="${href(n.key)}">${n.label}</a>`).join('')}
       </nav>
-      <div class="rail__foot">
-        ${meChip()}
-        ${state.me ? '' : '<button class="btn btn--ghost btn--sm" type="button" data-claim>Vincular este dispositivo</button>'}
-        <button class="btn btn--ghost btn--sm" type="button" data-out>Salir</button>
-      </div>
-    </aside>
+      ${meChip()}
+      <button class="bar__out" type="button" data-out>Salir</button>
+    </header>
 
-    <main class="stage">
-      <header class="topbar">
-        <a class="topbar__brand" href="${href('inicio')}">BAITERS<em>TRACKER</em></a>
-        <span class="topbar__right">
-          ${meChip(true)}
-        </span>
-      </header>
-      <div id="view" class="viewHost"></div>
-    </main>
+    <main id="view" class="viewHost"></main>
 
     <nav class="dock" aria-label="Navegación">
-      ${NAV.map(
-        (n) => `<a class="dock__item" data-nav="${n.key}" href="${href(n.key)}">
-          <span class="dock__dot" aria-hidden="true"></span>
-          <span class="dock__label">${n.label}</span>
-        </a>`
-      ).join('')}
+      ${NAV.map((n) => `<a class="dock__item" data-nav="${n.key}" href="${href(n.key)}">${n.label}</a>`).join('')}
     </nav>
   </div>`;
 
@@ -369,13 +330,19 @@ async function renderRoute() {
   if (!host) return;
 
   document.querySelectorAll('[data-nav]').forEach((a) => {
-    const active = a.dataset.nav === route.name || (route.name === 'jugador' && a.dataset.nav === 'plantilla');
+    const active =
+      a.dataset.nav === route.name ||
+      (route.name === 'jugador' && a.dataset.nav === 'plantilla') ||
+      (route.name === 'inicio' && a.dataset.nav === 'inicio');
     a.classList.toggle('is-on', active);
     if (active) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   });
 
   host.innerHTML = '<div class="loading"><span></span></div>';
+
+  // Datos al día en cada pantalla: las notas de los demás cambian entre visitas.
+  await loadCore().catch(() => {});
 
   let view;
   try {
@@ -403,7 +370,7 @@ async function renderRoute() {
   } catch (err) {
     view = {
       html: `<div class="view">
-        <header class="page-head"><h1 class="page-title">UPS</h1></header>
+        <h1 class="title">Algo ha fallado</h1>
         <p class="hint">${esc(errorMessage(err))}</p>
         <button class="btn btn--acid" type="button" onclick="location.reload()">Recargar</button>
       </div>`,
@@ -425,15 +392,13 @@ async function renderRoute() {
 /* ------------------------------------------------------------------ */
 
 function renderFatal(err) {
-  app.innerHTML = `<div class="gate gate--fatal">
+  app.innerHTML = `<div class="gate">
+    <div class="gate__head">${WORDMARK}</div>
     <div class="gate__panel">
-      <p class="kicker">No se pudo cargar</p>
-      <h2 class="gate__h2">Supabase no responde</h2>
+      <h1 class="gate__h">No se pudo cargar</h1>
       <p class="hint">${esc(errorMessage(err))}</p>
-      <div class="stack">
-        <button class="btn btn--acid" type="button" id="retry">Reintentar</button>
-        <button class="btn btn--ghost" type="button" id="back">Volver al acceso</button>
-      </div>
+      <button class="btn btn--acid" type="button" id="retry">Reintentar</button>
+      <button class="btn btn--ghost" type="button" id="back">Volver al acceso</button>
     </div>
   </div>`;
   app.querySelector('#retry').addEventListener('click', () => location.reload());

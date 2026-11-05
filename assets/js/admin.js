@@ -13,6 +13,8 @@ import {
   toast,
   errorMessage,
   href,
+  teamName,
+  plural,
 } from './core.js';
 import { KEYS } from './config.js';
 import { adminRpc, checkAdmin, uploadPlayerPhoto, clearPlayerPhoto, loadCore, playerById } from './data.js';
@@ -38,13 +40,13 @@ export async function adminView() {
   if (!pw) {
     return {
       html: `<div class="view">
-        <header class="page-head">
-          <div class="page-head__meta"><span class="kicker">Solo administración</span></div>
-          <h1 class="page-title">ZONA <span class="outline">ADMIN</span></h1>
+        <header class="pagehead">
+          <h1 class="title">Admin</h1>
+          <p class="lede">Solo para quien gestiona el grupo.</p>
         </header>
         <form class="gatebox" id="adminGate">
-          <p class="kicker">Contraseña de administrador</p>
-          <p class="hint">Independiente de la contraseña del grupo. Se guarda solo en esta pestaña.</p>
+          <h2 class="subhead">Contraseña de administrador</h2>
+          <p class="hint">Es distinta de la del grupo. Se guarda solo en esta pestaña.</p>
           <input class="input" type="password" name="pw" autocomplete="current-password" placeholder="Contraseña" required>
           <button class="btn btn--acid" type="submit">Desbloquear</button>
           <p class="formerr" id="gateErr" hidden></p>
@@ -90,12 +92,9 @@ async function adminPanel() {
   const matches = state.matches;
 
   const html = `<div class="view">
-    <header class="page-head">
-      <div class="page-head__meta">
-        <span class="kicker">Administración</span>
-        <button class="link link--mini" type="button" data-lock>Cerrar sesión admin</button>
-      </div>
-      <h1 class="page-title">ZONA <span class="outline">ADMIN</span></h1>
+    <header class="pagehead">
+      <h1 class="title">Admin</h1>
+      <p class="lede"><button class="more" type="button" data-lock>Bloquear el panel</button></p>
     </header>
 
     <div class="seg seg--admin" role="tablist">
@@ -146,7 +145,7 @@ function playersTab(players) {
   const wildcards = players.filter((p) => p.can_vote === false).length;
 
   return `<form class="adminform" id="newPlayer">
-      <p class="kicker">Añadir jugador</p>
+      <h2 class="subhead">Añadir jugador</h2>
       <div class="adminform__row">
         <input class="input" name="name" placeholder="Nombre y apellido" required maxlength="60" autocomplete="off">
         <select class="input" name="kind" aria-label="Tipo de jugador">
@@ -158,7 +157,7 @@ function playersTab(players) {
       <p class="hint">Solo el nombre. Cada jugador elige su dorsal al entrar. Los comodines juegan y reciben nota, pero no votan ni entran a elegir dorsal.</p>
     </form>
 
-    <p class="kicker">${players.length} jugadores · ${wildcards} comodines</p>
+    <p class="meta">${plural(players.length, 'jugador', 'jugadores')}, ${plural(wildcards, 'comodín', 'comodines')}</p>
 
     <ul class="adminlist">
       ${players
@@ -166,18 +165,18 @@ function playersTab(players) {
           (p) => `<li class="adminrow" data-player="${esc(p.id)}">
             <div class="adminrow__pic">${photoBlock(p, 'ph--thumb')}</div>
             <div class="adminrow__who">
-              <span class="adminrow__name">${esc(p.name)} <b>${p.shirt_number ? pad2(p.shirt_number) : '—'}</b></span>
+              <span class="adminrow__name">${esc(p.name)} <b>${p.shirt_number ? pad2(p.shirt_number) : ''}</b></span>
               <span class="adminrow__meta">
                 ${p.active === false ? '<span class="chip chip--warn">Inactivo</span>' : '<span class="chip chip--dim">Activo</span>'}
                 ${p.can_vote === false ? '<span class="chip chip--warn">Comodín</span>' : '<span class="chip chip--dim">Vota</span>'}
                 ${p.device_hash ? '<span class="chip chip--acid">Con móvil</span>' : '<span class="chip chip--dim">Sin móvil</span>'}
-                <span class="mono mono--dim">${rating(p.stats?.avg_rating)} · ${num(p.stats?.goals, 0)} G</span>
+                <span class="meta">Nota ${rating(p.stats?.avg_rating)}, ${plural(num(p.stats?.goals, 0), 'gol', 'goles')}</span>
               </span>
             </div>
             <div class="adminrow__actions">
               <button class="iconbtn" type="button" data-act="photo" title="Cambiar foto">Foto</button>
-              <button class="iconbtn" type="button" data-act="number" title="Cambiar dorsal">#</button>
-              <button class="iconbtn" type="button" data-act="rename" title="Renombrar">Nombre</button>
+              <button class="iconbtn" type="button" data-act="number" title="Cambiar dorsal">Dorsal</button>
+              <button class="iconbtn" type="button" data-act="rename" title="Renombrar">Renombrar</button>
               <button class="iconbtn" type="button" data-act="wildcard" title="Cambiar tipo">${p.can_vote === false ? 'Hacer votante' : 'Hacer comodín'}</button>
               <button class="iconbtn" type="button" data-act="toggle" title="Activar o desactivar">${p.active === false ? 'Activar' : 'Ocultar'}</button>
               ${p.device_hash ? `<button class="iconbtn" type="button" data-act="release" title="Liberar dispositivo">Liberar</button>` : ''}
@@ -280,14 +279,14 @@ function mountPlayers(root) {
 function askNumber(player) {
   const s = sheet({
     title: 'Dorsal',
-    kicker: player.name,
-    body: `<label class="field"><span class="kicker">Número (1–99)</span>
+    subtitle: player.name,
+    body: `<label class="field"><span class="field__label">Número del 1 al 99</span>
       <input class="input" type="number" min="1" max="99" value="${player.shirt_number ?? ''}" id="numInput" inputmode="numeric"></label>`,
     actions: [
-      { label: 'Cancelar', variant: 'ghost', onClick: () => s.close() },
+      { label: 'Cancelar', variant: 'btn--ghost', onClick: () => s.close() },
       {
         label: 'Guardar',
-        variant: 'acid',
+        variant: 'btn--acid',
         onClick: async () => {
           const value = s.el.querySelector('#numInput').value;
           try {
@@ -311,14 +310,14 @@ function askNumber(player) {
 function askRename(player) {
   const s = sheet({
     title: 'Renombrar',
-    kicker: player.name,
-    body: `<label class="field"><span class="kicker">Nombre</span>
+    subtitle: player.name,
+    body: `<label class="field"><span class="field__label">Nombre</span>
       <input class="input" type="text" value="${esc(player.name)}" id="renameInput" maxlength="60"></label>`,
     actions: [
-      { label: 'Cancelar', variant: 'ghost', onClick: () => s.close() },
+      { label: 'Cancelar', variant: 'btn--ghost', onClick: () => s.close() },
       {
         label: 'Guardar',
-        variant: 'acid',
+        variant: 'btn--acid',
         onClick: async () => {
           const value = s.el.querySelector('#renameInput').value.trim();
           if (!value) return;
@@ -342,7 +341,7 @@ function askRename(player) {
 
 function matchesTab(matches) {
   return `<form class="adminform" id="newMatch">
-      <p class="kicker">Nuevo partido</p>
+      <h2 class="subhead">Nuevo partido</h2>
       <div class="adminform__row">
         <input class="input" type="date" name="date" value="${todayISO()}" required>
         <button class="btn btn--acid" type="submit">Crear</button>
@@ -355,10 +354,10 @@ function matchesTab(matches) {
           (m) => `<li class="adminrow" data-match="${esc(m.id)}">
             <div class="adminrow__date"><b>${dateParts(m.played_on).day}</b>${dateParts(m.played_on).month}</div>
             <div class="adminrow__who">
-              <span class="adminrow__name">${num(m.goals_a, 0)} — ${num(m.goals_b, 0)}</span>
+              <span class="adminrow__name">Oscuros ${num(m.goals_a, 0)}, Claros ${num(m.goals_b, 0)}</span>
               <span class="adminrow__meta">
                 <span class="chip ${m.status === 'open' ? 'chip--acid' : 'chip--dim'}">${m.status === 'open' ? 'Abierto' : 'Cerrado'}</span>
-                <span class="mono mono--dim">${esc(longDate(m.played_on))}</span>
+                <span class="meta">${esc(longDate(m.played_on))}</span>
               </span>
             </div>
             <div class="adminrow__actions">
@@ -421,13 +420,13 @@ function mountMatches(root) {
 function askDate(match) {
   const s = sheet({
     title: 'Fecha del partido',
-    body: `<label class="field"><span class="kicker">Día</span>
+    body: `<label class="field"><span class="field__label">Día</span>
       <input class="input" type="date" id="dateInput" value="${esc(match.played_on)}"></label>`,
     actions: [
-      { label: 'Cancelar', variant: 'ghost', onClick: () => s.close() },
+      { label: 'Cancelar', variant: 'btn--ghost', onClick: () => s.close() },
       {
         label: 'Guardar',
-        variant: 'acid',
+        variant: 'btn--acid',
         onClick: async () => {
           const value = s.el.querySelector('#dateInput').value;
           if (!value) return;
@@ -448,13 +447,13 @@ function askDate(match) {
 async function openLineup(match) {
   const s = sheet({
     title: 'Alineación',
-    kicker: longDate(match.played_on),
+    subtitle: longDate(match.played_on),
     body: '<p class="hint">Cargando…</p>',
     actions: [
-      { label: 'Cerrar', variant: 'ghost', onClick: () => s.close() },
+      { label: 'Cerrar', variant: 'btn--ghost', onClick: () => s.close() },
       {
         label: 'Guardar y cerrar',
-        variant: 'acid',
+        variant: 'btn--acid',
         onClick: () => {
           s.close();
           toast('Alineación guardada');
@@ -477,22 +476,24 @@ async function openLineup(match) {
   const pw = adminPassword();
   const players = state.players.filter((p) => p.active !== false);
 
-  const body = `<p class="hint">Marca equipo y goles. Se guarda al instante.</p>
+  const body = `<p class="hint">Elige equipo y goles de cada uno. Se guarda al instante.</p>
     <ul class="lineupEdit">
       ${players
         .map((p) => {
           const row = assigned.get(p.id);
           return `<li class="lineupEdit__row" data-player="${esc(p.id)}">
             <span class="lineupEdit__name">${esc(p.name)}<b>${p.shirt_number ? pad2(p.shirt_number) : ''}</b>${p.can_vote === false ? '<i class="lineupEdit__tag">comodín</i>' : ''}</span>
-            <span class="lineupEdit__teams">
-              <button class="iconbtn${row?.team === 'A' ? ' is-on' : ''}" type="button" data-team="A">A</button>
-              <button class="iconbtn${row?.team === 'B' ? ' is-on' : ''}" type="button" data-team="B">B</button>
-              <button class="iconbtn${!row ? ' is-on' : ''}" type="button" data-team="">—</button>
-            </span>
-            <span class="stepper">
-              <button class="iconbtn" type="button" data-goal="-1">−</button>
-              <b data-goals>${row?.goals ?? 0}</b>
-              <button class="iconbtn" type="button" data-goal="1">+</button>
+            <span class="lineupEdit__ctrl">
+              <span class="lineupEdit__teams">
+                <button class="iconbtn${row?.team === 'A' ? ' is-on' : ''}" type="button" data-team="A">${teamName('A')}</button>
+                <button class="iconbtn${row?.team === 'B' ? ' is-on' : ''}" type="button" data-team="B">${teamName('B')}</button>
+                <button class="iconbtn${!row ? ' is-on' : ''}" type="button" data-team="">Fuera</button>
+              </span>
+              <span class="stepper" aria-label="Goles">
+                <button class="iconbtn" type="button" data-goal="-1" aria-label="Quitar un gol">−</button>
+                <b data-goals>${row?.goals ?? 0}</b>
+                <button class="iconbtn" type="button" data-goal="1" aria-label="Añadir un gol">+</button>
+              </span>
             </span>
           </li>`;
         })
@@ -557,11 +558,11 @@ async function openLineup(match) {
 
 function settingsTab() {
   return `<div class="adminform">
-      <p class="kicker">Votaciones</p>
+      <h2 class="subhead">Votaciones</h2>
       <div class="switchrow">
         <div>
           <b>Permitir votarse a uno mismo</b>
-          <p class="hint">Si está desactivado, cada jugador puntúa a los demás.</p>
+          <p class="hint">Si está desactivado, cada jugador solo puntúa a los demás.</p>
         </div>
         <button class="switch ${state.allowSelfVote ? 'is-on' : ''}" type="button" id="selfVote"
           role="switch" aria-checked="${state.allowSelfVote ? 'true' : 'false'}"><span></span></button>
@@ -569,7 +570,7 @@ function settingsTab() {
     </div>
 
     <form class="adminform" id="pwForm">
-      <p class="kicker">Contraseña de admin</p>
+      <h2 class="subhead">Contraseña de admin</h2>
       <div class="adminform__row">
         <input class="input" type="password" name="current" placeholder="Actual" autocomplete="current-password" required>
         <input class="input" type="password" name="next" placeholder="Nueva" autocomplete="new-password" minlength="8" required>
@@ -579,8 +580,8 @@ function settingsTab() {
     </form>
 
     <div class="adminform">
-      <p class="kicker">Foto de jugador</p>
-      <p class="hint">Las imágenes se suben a Supabase Storage (bucket <code>player-photos</code>) y se quedan asociadas al jugador para todo el histórico.</p>
+      <h2 class="subhead">Fotos de los jugadores</h2>
+      <p class="hint">Se suben desde la pestaña Jugadores, con el botón Foto de cada fila.</p>
     </div>`;
 }
 
@@ -636,10 +637,10 @@ function confirmAction(title, text, onYes) {
     title,
     body: `<p class="hint">${esc(text)}</p>`,
     actions: [
-      { label: 'Cancelar', variant: 'ghost', onClick: () => s.close() },
+      { label: 'Cancelar', variant: 'btn--ghost', onClick: () => s.close() },
       {
         label: 'Confirmar',
-        variant: 'danger',
+        variant: 'btn--danger',
         onClick: () => {
           s.close();
           onYes();

@@ -3,60 +3,106 @@ import {
   esc,
   pad2,
   num,
+  plural,
   rating,
+  rating2,
+  ratingTone,
+  rateBadge,
   dateParts,
   longDate,
+  shortDate,
   photoBlock,
-  initials,
+  avatar,
+  teamName,
+  teamTag,
+  outcomeText,
+  sheet,
   toast,
   errorMessage,
   href,
 } from './core.js';
 import {
   sortedBy,
+  rawValue,
   lastClosedMatch,
   nextMatch,
   matchDetail,
   playerHistory,
   playerById,
   castVote,
+  loadCore,
 } from './data.js';
 
 /* ------------------------------------------------------------------ */
 /* Piezas compartidas                                                  */
 /* ------------------------------------------------------------------ */
 
-function head(kicker, title, meta = '') {
-  return `<header class="page-head">
-    <div class="page-head__meta">
-      <span class="kicker">${esc(kicker)}</span>
-      ${meta ? `<span class="mono mono--dim">${esc(meta)}</span>` : ''}
-    </div>
-    <h1 class="page-title">${title}</h1>
+function pageTitle(title, lede = '') {
+  return `<header class="pagehead">
+    <h1 class="title">${title}</h1>
+    ${lede ? `<p class="lede">${esc(lede)}</p>` : ''}
   </header>`;
 }
 
-function sectionHead(kicker, title, extra = '') {
-  return `<div class="section-head">
-    <h2 class="section-title"><span class="kicker">${esc(kicker)}</span>${esc(title)}</h2>
-    ${extra}
-  </div>`;
+function section(title, extra = '') {
+  return `<div class="sec"><h2 class="sec__title">${esc(title)}</h2>${extra}</div>`;
 }
 
-function voidBlock(title, text) {
+function empty(title, text) {
   return `<section class="void">
-    <span class="void__num" aria-hidden="true">00</span>
     <h2 class="void__title">${esc(title)}</h2>
     <p class="void__text">${esc(text)}</p>
   </section>`;
 }
 
-function seasonLabel() {
-  return 'Temporada 2026/27';
+function voteBadge(score, extra = '') {
+  return `<span class="rate rate--${ratingTone(score)} ${extra}">${score}</span>`;
 }
 
-function jersey(p) {
-  return p?.shirt_number ? pad2(p.shirt_number) : initials(p?.name);
+function dorsal(p) {
+  return p?.shirt_number ? `#${pad2(p.shirt_number)}` : '';
+}
+
+function pill(text, tone = '') {
+  return `<span class="pill ${tone ? `pill--${tone}` : ''}">${esc(text)}</span>`;
+}
+
+/* ------------------------------------------------------------------ */
+/* Votación: reglas que se ven en pantalla (la base de datos las impone) */
+/* ------------------------------------------------------------------ */
+
+function voteStatus(detail, targetId) {
+  const { summary, lineup, myVotes } = detail;
+  const me = state.me;
+  const mine = myVotes.get(targetId) ?? null;
+  if (summary.status !== 'open') return { can: false, reason: 'closed', mine };
+  if (!me) return { can: false, reason: 'nologin', mine };
+  const meP = playerById(me);
+  if (meP?.can_vote === false) return { can: false, reason: 'wildcard', mine };
+  if (!lineup.some((l) => l.player_id === me)) return { can: false, reason: 'notplayed', mine };
+  if (me === targetId && !state.allowSelfVote) return { can: false, reason: 'self', mine };
+  if (mine != null) return { can: false, reason: 'done', mine };
+  return { can: true, reason: 'ok', mine };
+}
+
+const REASONS = {
+  nologin: 'Elige quién eres para poder votar.',
+  wildcard: 'Los comodines juegan, pero no votan.',
+  notplayed: 'Solo votan quienes jugaron este partido.',
+  self: 'No puedes votarte a ti mismo.',
+  done: 'Ya has votado a este jugador. Solo el admin puede corregir una nota.',
+};
+
+/** Cuántos jugadores puede votar quien mira y cuántos lleva. null si no puede votar en este partido. */
+function voteProgress(detail) {
+  const { summary, lineup, myVotes } = detail;
+  const me = state.me;
+  if (summary.status !== 'open' || !me) return null;
+  const meP = playerById(me);
+  if (meP?.can_vote === false || !lineup.some((l) => l.player_id === me)) return null;
+  const targets = lineup.filter((l) => l.player_id !== me || state.allowSelfVote);
+  const done = targets.filter((l) => myVotes.has(l.player_id)).length;
+  return { total: targets.length, done };
 }
 
 /* ------------------------------------------------------------------ */
@@ -66,122 +112,90 @@ function jersey(p) {
 export async function home() {
   const last = lastClosedMatch();
   const next = nextMatch();
-  const recent = state.matches.filter((m) => m.status === 'closed').slice(0, 5);
+  const recent = state.matches.filter((m) => m.status === 'closed').slice(0, 4);
 
-  const featured = sortedBy('rating')
-    .filter((p) => (p.stats?.played || 0) > 0)
-    .slice(0, 8);
+  const [lastDetail, nextDetail] = await Promise.all([
+    last ? matchDetail(last.id).catch(() => null) : null,
+    next && state.me ? matchDetail(next.id).catch(() => null) : null,
+  ]);
 
-  const topRated = sortedBy('rating')[0];
+  const progress = nextDetail ? voteProgress(nextDetail) : null;
+  const best = sortedBy('rating').filter((p) => (p.stats?.played || 0) > 0 && p.stats.avg_rating != null).slice(0, 5);
+
+  let todo = '';
+  if (next && progress && progress.done < progress.total) {
+    const left = progress.total - progress.done;
+    todo = `<a class="todo" href="${href('partidos', next.id)}">
+      <span class="todo__text">
+        <b>${left === 1 ? 'Te falta 1 nota' : `Te faltan ${left} notas`}</b>
+        <span>Partido del ${esc(shortDate(next.played_on))}</span>
+      </span>
+      <span class="btn btn--acid btn--sm">Votar</span>
+    </a>`;
+  } else if (next) {
+    todo = `<a class="todo todo--quiet" href="${href('partidos', next.id)}">
+      <span class="todo__text">
+        <b>Partido abierto</b>
+        <span>${esc(shortDate(next.played_on))}${progress ? ', ya has votado a todos' : ''}</span>
+      </span>
+      <span class="btn btn--ghost btn--sm">Ver</span>
+    </a>`;
+  }
+
+  const scorecard = last
+    ? `<a class="score" href="${href('partidos', last.id)}">
+        <div class="score__top">
+          <span class="score__date">${esc(longDate(last.played_on))}</span>
+          ${pill('Último partido')}
+        </div>
+        <div class="score__board">
+          <span class="score__n">${num(last.goals_a, 0)}</span>
+          <span class="score__sep" aria-hidden="true"></span>
+          <span class="score__n">${num(last.goals_b, 0)}</span>
+          <span class="score__who">${teamTag('A')}</span>
+          <span></span>
+          <span class="score__who">${teamTag('B')}</span>
+        </div>
+        ${
+          lastDetail?.mvp
+            ? `<div class="mvp">
+                ${avatar(lastDetail.mvp.player, 48)}
+                <span class="mvp__text"><b>${esc(lastDetail.mvp.player.name)}</b><span>MVP del partido</span></span>
+                ${rateBadge(lastDetail.mvp.score, 'rate--ink')}
+              </div>`
+            : `<p class="score__foot">${esc(outcomeText(last.goals_a, last.goals_b))}</p>`
+        }
+      </a>`
+    : empty('Aún no hay partidos', 'Cuando el admin cierre el primero, aquí saldrá el resultado y el MVP.');
 
   const html = `<div class="view">
-    ${head('BaitersTracker', 'EL <span class="outline">VESTUARIO</span>', seasonLabel())}
+    ${pageTitle('Vestuario')}
+    ${todo}
+    ${scorecard}
 
     ${
-      last
-        ? `<article class="scorecard">
-            <div class="scorecard__top">
-              <span class="kicker">Último partido</span>
-              <span class="mono mono--dim">${esc(longDate(last.played_on))}</span>
-            </div>
-            <div class="scorecard__row">
-              <div class="scorecard__side">
-                <span class="tag">A</span>
-                <span class="scorecard__team">Equipo A</span>
-              </div>
-              <div class="scorecard__nums">
-                <span>${num(last.goals_a, 0)}</span>
-                <span class="scorecard__dash">—</span>
-                <span>${num(last.goals_b, 0)}</span>
-              </div>
-              <div class="scorecard__side scorecard__side--r">
-                <span class="scorecard__team">Equipo B</span>
-                <span class="tag">B</span>
-              </div>
-            </div>
-            <a class="scorecard__link" href="${href('partidos', last.id)}">
-              Alineaciones y notas <span aria-hidden="true">→</span>
-            </a>
-          </article>`
-        : voidBlock('Aún no hay resultados', 'Crea el primer partido desde administración para empezar a registrar notas.')
-    }
-
-    ${
-      topRated && (topRated.stats?.played || 0) > 0
-        ? `<article class="spotlight">
-            <a class="spotlight__media" href="${href('jugador', topRated.id)}">
-              ${photoBlock(topRated, 'ph--tall')}
-              <span class="spotlight__badge">MVP</span>
-            </a>
-            <div class="spotlight__body">
-              <span class="kicker kicker--acid">Mejor media del vestuario</span>
-              <h2 class="spotlight__name">${esc(topRated.name)}</h2>
-              <div class="figures figures--inline">
-                <div class="figure"><span class="figure__value figure__value--acid">${rating(topRated.stats.avg_rating)}</span><span class="figure__label">Nota</span></div>
-                <div class="figure"><span class="figure__value">${num(topRated.stats.goals, 0)}</span><span class="figure__label">Goles</span></div>
-                <div class="figure"><span class="figure__value">${num(topRated.stats.mvps, 0)}</span><span class="figure__label">MVP</span></div>
-              </div>
-              <a class="link" href="${href('jugador', topRated.id)}">Perfil completo <span aria-hidden="true">→</span></a>
-            </div>
-            <span class="spotlight__ghost" aria-hidden="true">${esc(jersey(topRated))}</span>
-          </article>`
-        : ''
-    }
-
-    ${
-      next
-        ? `<a class="next" href="${href('partidos', next.id)}">
-            <span class="next__day">${dateParts(next.played_on).day}</span>
-            <span class="next__meta">
-              <span class="kicker">Próximo partido</span>
-              <span class="next__label">${esc(longDate(next.played_on))} · Equipo A — Equipo B</span>
-            </span>
-            <span class="next__arrow" aria-hidden="true">→</span>
-          </a>`
-        : ''
-    }
-
-    ${
-      featured.length
-        ? `<section class="block">
-            ${sectionHead('Plantilla', 'Destacados', `<a class="link link--mini" href="${href('ranking')}">Ranking →</a>`)}
-            <div class="rail-scroll">
-              ${featured
-                .map(
-                  (p) => `<a class="pcard" href="${href('jugador', p.id)}">
-                    <div class="pcard__media">${photoBlock(p, 'ph--card')}</div>
-                    <div class="pcard__plate">
-                      <span class="pcard__num">${esc(jersey(p))}</span>
-                      <span class="pcard__name">${esc(p.name)}</span>
-                      <span class="pcard__stat">${rating(p.stats.avg_rating)} · ${num(p.stats.goals, 0)} goles</span>
-                    </div>
-                  </a>`
-                )
-                .join('')}
-            </div>
-          </section>`
+      best.length
+        ? `${section('Mejores notas', `<a class="more" href="${href('ranking')}">Ver tabla</a>`)}
+           <ol class="plist">
+             ${best
+               .map(
+                 (p, i) => `<li><a class="prow" href="${href('jugador', p.id)}">
+                   <span class="prow__rank">${i + 1}</span>
+                   ${avatar(p, 44)}
+                   <span class="prow__who"><b class="prow__name">${esc(p.name)}</b>
+                     <span class="prow__sub">${esc(plural(p.stats.played, 'partido', 'partidos'))}</span></span>
+                   ${rateBadge(p.stats.avg_rating)}
+                 </a></li>`
+               )
+               .join('')}
+           </ol>`
         : ''
     }
 
     ${
       recent.length
-        ? `<section class="block">
-            ${sectionHead('Historial', 'Últimos resultados', `<a class="link link--mini" href="${href('partidos')}">Todos →</a>`)}
-            <ol class="results">
-              ${recent
-                .map(
-                  (m) => `<li>
-                    <a class="results__row" href="${href('partidos', m.id)}">
-                      <span class="results__date"><b>${dateParts(m.played_on).day}</b>${dateParts(m.played_on).month}</span>
-                      <span class="results__score">${num(m.goals_a, 0)}<i>—</i>${num(m.goals_b, 0)}</span>
-                      <span class="results__meta">A · B</span>
-                      <span class="results__arrow" aria-hidden="true">→</span>
-                    </a>
-                  </li>`
-                )
-                .join('')}
-            </ol>
-          </section>`
+        ? `${section('Últimos resultados', `<a class="more" href="${href('partidos')}">Todos</a>`)}
+           <ol class="mlist">${recent.map(matchRow).join('')}</ol>`
         : ''
     }
   </div>`;
@@ -195,60 +209,63 @@ export async function home() {
 
 const SORTS = [
   { key: 'goals', label: 'Goles', unit: 'goles', dir: 'desc' },
-  { key: 'mvps', label: 'MVP', unit: 'mvp', dir: 'desc' },
+  { key: 'mvps', label: 'MVP', unit: 'MVP', dir: 'desc' },
   { key: 'wins', label: 'Victorias', unit: 'victorias', dir: 'desc' },
-  { key: 'rating', label: 'Nota media', unit: 'nota', dir: 'desc' },
-  { key: 'conceded', label: 'Encajados', unit: 'por partido', dir: 'asc' },
+  { key: 'rating', label: 'Nota media', unit: 'de media', dir: 'desc' },
+  { key: 'conceded', label: 'Menos encajados', unit: 'por partido', dir: 'asc' },
 ];
 
-function sortValue(player, key) {
-  const s = player.stats || {};
-  switch (key) {
-    case 'goals':
-      return num(s.goals, 0);
-    case 'mvps':
-      return num(s.mvps, 0);
-    case 'wins':
-      return num(s.wins, 0);
-    case 'rating':
-      return rating(s.avg_rating);
-    case 'conceded':
-      return s.conceded_pm == null ? '—' : Number(s.conceded_pm).toFixed(2).replace('.', ',');
-    default:
-      return '—';
-  }
+function sortText(player, key) {
+  const v = rawValue(player, key);
+  if (v == null) return '–';
+  if (key === 'rating' || key === 'conceded') return v.toFixed(2).replace('.', ',');
+  return String(v);
 }
 
 function boardHTML(key, dir) {
-  const rows = sortedBy(key, dir).filter((p) => p.active !== false);
-  if (!rows.length) return voidBlock('Sin jugadores', 'Añade jugadores desde administración.');
+  const needsData = key === 'rating' || key === 'conceded';
+  const rows = sortedBy(key, dir).filter((p) => (needsData ? (p.stats?.played || 0) > 0 : true));
+  if (!rows.length) {
+    return empty(
+      needsData ? 'Todavía no hay datos' : 'Sin jugadores',
+      needsData ? 'Aparecerá cuando haya partidos con resultado.' : 'El admin puede añadir jugadores desde Admin.'
+    );
+  }
 
-  const leader = rows[0];
-  const rest = rows.slice(1);
   const unit = SORTS.find((s) => s.key === key)?.unit || '';
+  const ranks = [];
+  rows.forEach((p, i) => {
+    const v = rawValue(p, key);
+    ranks.push(i > 0 && v === rawValue(rows[i - 1], key) ? ranks[i - 1] : i + 1);
+  });
 
-  return `<div class="leader">
-      <div class="leader__media">${photoBlock(leader, 'ph--leader')}</div>
-      <div class="leader__body">
-        <span class="kicker kicker--acid">Líder · ${esc(unit)}</span>
-        <h2 class="leader__name">${esc(leader.name)}</h2>
-        <p class="leader__value">${esc(sortValue(leader, key))}</p>
-        <a class="link" href="${href('jugador', leader.id)}">Ver perfil <span aria-hidden="true">→</span></a>
-      </div>
-      <span class="leader__rank" aria-hidden="true">01</span>
-    </div>
-    <ol class="board">
+  const first = rows[0];
+  const showChamp = needsData ? rawValue(first, key) != null : rawValue(first, key) > 0;
+  const rest = showChamp ? rows.slice(1) : rows;
+  const restRanks = showChamp ? ranks.slice(1) : ranks;
+
+  const champ = showChamp
+    ? `<a class="champ" href="${href('jugador', first.id)}">
+        ${avatar(first, 76)}
+        <span class="champ__who">
+          <span class="champ__tag">Líder</span>
+          <b class="champ__name">${esc(first.name)}</b>
+        </span>
+        <span class="champ__val">${esc(sortText(first, key))}<small>${esc(unit)}</small></span>
+      </a>`
+    : '';
+
+  return `${champ}
+    <ol class="plist">
       ${rest
         .map(
-          (p, i) => `<li class="board__row">
-            <span class="board__rank">${pad2(i + 2)}</span>
-            <a class="board__pic" href="${href('jugador', p.id)}">${photoBlock(p, 'ph--thumb')}</a>
-            <span class="board__who">
-              <a class="board__name" href="${href('jugador', p.id)}">${esc(p.name)}</a>
-              <span class="board__sub">${num(p.stats?.played, 0)} PJ · ${num(p.stats?.wins, 0)} V</span>
-            </span>
-            <span class="board__stat">${esc(sortValue(p, key))}<span class="board__unit">${esc(unit)}</span></span>
-          </li>`
+          (p, i) => `<li><a class="prow" href="${href('jugador', p.id)}">
+            <span class="prow__rank">${restRanks[i]}</span>
+            ${avatar(p, 44)}
+            <span class="prow__who"><b class="prow__name">${esc(p.name)}</b>
+              <span class="prow__sub">${esc(plural(p.stats?.played ?? 0, 'partido', 'partidos'))}, ${esc(plural(p.stats?.wins ?? 0, 'victoria', 'victorias'))}</span></span>
+            <span class="prow__val">${esc(sortText(p, key))}<small>${esc(unit)}</small></span>
+          </a></li>`
         )
         .join('')}
     </ol>`;
@@ -258,8 +275,8 @@ export async function ranking() {
   const first = SORTS[0];
 
   const html = `<div class="view">
-    ${head('Clasificación', 'LA <span class="outline">TABLA</span>', 'Histórico completo')}
-    <div class="seg" role="tablist" aria-label="Ordenar ranking">
+    ${pageTitle('Tabla', 'Todo el histórico del vestuario.')}
+    <div class="seg" role="tablist" aria-label="Ordenar la tabla">
       ${SORTS.map(
         (s, i) => `<button class="seg__btn${i === 0 ? ' is-on' : ''}" type="button" role="tab"
           aria-selected="${i === 0}" data-sort="${s.key}" data-dir="${s.dir}">${esc(s.label)}</button>`
@@ -290,47 +307,30 @@ export async function ranking() {
 /* Partidos                                                            */
 /* ------------------------------------------------------------------ */
 
+function matchRow(m) {
+  const d = dateParts(m.played_on);
+  const isOpen = m.status === 'open';
+  return `<li>
+    <a class="mrow" href="${href('partidos', m.id)}">
+      <span class="mrow__date"><b>${esc(d.day)}</b><span>${esc(d.month)}</span></span>
+      <span class="mrow__main">
+        <span class="mrow__score">${num(m.goals_a, 0)}<i aria-hidden="true"></i>${num(m.goals_b, 0)}</span>
+        <span class="mrow__sub">${esc(isOpen ? 'Votación en marcha' : outcomeText(m.goals_a, m.goals_b))}</span>
+      </span>
+      ${pill(isOpen ? 'Abierto' : 'Cerrado', isOpen ? 'acid' : '')}
+    </a>
+  </li>`;
+}
+
 export async function matches() {
   const open = state.matches.filter((m) => m.status === 'open');
   const closed = state.matches.filter((m) => m.status === 'closed');
 
-  const row = (m) => `<li>
-    <a class="mrow" href="${href('partidos', m.id)}">
-      <span class="mrow__date"><b>${dateParts(m.played_on).day}</b>${dateParts(m.played_on).month}</span>
-      <span class="mrow__main">
-        <span class="mrow__score">${num(m.goals_a, 0)}<i>—</i>${num(m.goals_b, 0)}</span>
-        <span class="mrow__sub">${esc(dateParts(m.played_on).weekday)} · Equipo A / Equipo B</span>
-      </span>
-      <span class="chip ${m.status === 'open' ? 'chip--acid' : 'chip--dim'}">${m.status === 'open' ? 'Abierto' : 'Cerrado'}</span>
-    </a>
-  </li>`;
-
   const html = `<div class="view">
-    ${head('Calendario', 'PARTIDOS', `${state.matches.length} registrados`)}
-
-    ${
-      open.length
-        ? `<section class="block">
-            ${sectionHead('En juego', 'Convocatorias abiertas')}
-            <ol class="mlist">${open.map(row).join('')}</ol>
-          </section>`
-        : ''
-    }
-
-    ${
-      closed.length
-        ? `<section class="block">
-            ${sectionHead('Resultados', 'Partidos cerrados')}
-            <ol class="mlist">${closed.map(row).join('')}</ol>
-          </section>`
-        : ''
-    }
-
-    ${
-      !open.length && !closed.length
-        ? voidBlock('Calendario vacío', 'El admin puede crear partidos desde la zona de administración.')
-        : ''
-    }
+    ${pageTitle('Partidos', state.matches.length ? plural(state.matches.length, 'partido registrado', 'partidos registrados') : '')}
+    ${open.length ? `${section('Votación abierta')}<ol class="mlist">${open.map(matchRow).join('')}</ol>` : ''}
+    ${closed.length ? `${section('Cerrados')}<ol class="mlist">${closed.map(matchRow).join('')}</ol>` : ''}
+    ${!open.length && !closed.length ? empty('Todavía no hay partidos', 'El admin los crea desde la pestaña Admin.') : ''}
   </div>`;
 
   return { html, mount() {} };
@@ -340,162 +340,218 @@ export async function matches() {
 /* Detalle de partido                                                  */
 /* ------------------------------------------------------------------ */
 
+function teamBlock(code, rows, goals, detail) {
+  const items = rows.length
+    ? rows
+        .map((row) => {
+          const p = row.player;
+          const st = voteStatus(detail, p.id);
+          const votes = detail.votesByTarget.get(p.id) || [];
+          return `<li><button class="lrow" type="button" data-player="${esc(p.id)}">
+            ${avatar(p, 44)}
+            <span class="lrow__who">
+              <b class="lrow__name">${esc(p.name)}</b>
+              <span class="lrow__sub">${esc(plural(row.goals ?? 0, 'gol', 'goles'))}</span>
+              ${st.can ? '<span class="pill pill--acid">Falta tu nota</span>' : st.mine != null ? `<span class="pill">Tu nota: ${st.mine}</span>` : ''}
+            </span>
+            <span class="lrow__end">
+              ${rateBadge(row.avg_score)}
+              <span class="lrow__n">${esc(votes.length ? plural(votes.length, 'nota', 'notas') : 'sin notas')}</span>
+            </span>
+          </button></li>`;
+        })
+        .join('')
+    : '<li class="lrow__empty">Sin jugadores</li>';
+
+  return `<div class="team">
+    <div class="team__head">${teamTag(code)}<span class="team__goals">${esc(plural(goals ?? 0, 'gol', 'goles'))}</span></div>
+    <ul class="lineup">${items}</ul>
+  </div>`;
+}
+
 export async function matchView(id) {
   const detail = await matchDetail(id);
 
   if (!detail) {
     return {
-      html: `<div class="view">${head('Partido', 'NO <span class="outline">EXISTE</span>')}
-        ${voidBlock('Partido no encontrado', 'Puede que se haya borrado.')}</div>`,
+      html: `<div class="view">
+        <a class="back" href="${href('partidos')}">Partidos</a>
+        ${empty('Partido no encontrado', 'Puede que se haya borrado.')}</div>`,
       mount() {},
     };
   }
 
-  const { summary, lineup, mvp, myVotes } = detail;
+  const { summary, lineup, mvp } = detail;
   const open = summary.status === 'open';
-  const isClosed = summary.status === 'closed';
-  const teamA = lineup.filter((l) => l.team === 'A');
-  const teamB = lineup.filter((l) => l.team === 'B');
-  const me = state.me;
-
-  const lineRow = (row) => {
-    const p = row.player;
-    return `<li class="lineup__row">
-      <a class="lineup__pic" href="${href('jugador', p.id)}">${photoBlock(p, 'ph--thumb')}</a>
-      <span class="lineup__who">
-        <a class="lineup__name" href="${href('jugador', p.id)}">${esc(p.name)}</a>
-        <span class="lineup__meta">${esc(jersey(p))} · ${num(row.goals, 0)} goles</span>
-      </span>
-      <span class="lineup__rating ${row.avg_score == null ? 'is-void' : ''}">${rating(row.avg_score)}</span>
-    </li>`;
-  };
-
-  const voteRow = (row) => {
-    const p = row.player;
-    const mine = myVotes?.get?.(p.id);
-    const blocked = !me || (me === p.id && !state.allowSelfVote);
-    return `<li class="vote" data-target="${esc(p.id)}">
-      <div class="vote__who">
-        <span class="vote__name">${esc(p.name)}</span>
-        <span class="vote__meta">${mine ? `Tu nota: ${mine}` : 'Sin nota'}</span>
-      </div>
-      <div class="vote__scale" role="group" aria-label="Nota para ${esc(p.name)}">
-        ${Array.from({ length: 10 }, (_, i) => i + 1)
-          .map(
-            (n) =>
-              `<button class="vote__btn${mine === n ? ' is-on' : ''}" type="button" data-score="${n}"
-                ${blocked || mine ? 'disabled' : ''} aria-label="${n}">${n}</button>`
-          )
-          .join('')}
-      </div>
-    </li>`;
-  };
+  const prog = voteProgress(detail);
+  const pct = prog && prog.total ? Math.round((prog.done / prog.total) * 100) : 0;
 
   const html = `<div class="view">
-    <header class="mhead">
-      <a class="back" href="${href('partidos')}"><span aria-hidden="true">←</span> Partidos</a>
-      <div class="mhead__meta">
-        <span class="kicker">${esc(longDate(summary.played_on))}</span>
-        <span class="chip ${open ? 'chip--acid' : 'chip--dim'}">${open ? 'Votación abierta' : 'Cerrado'}</span>
+    <a class="back" href="${href('partidos')}">Partidos</a>
+
+    <section class="score score--static">
+      <div class="score__top">
+        <span class="score__date">${esc(longDate(summary.played_on))}</span>
+        ${pill(open ? 'Votación abierta' : 'Cerrado', open ? 'acid' : '')}
       </div>
-      <div class="mhead__score">
-        <span class="mhead__side">A</span>
-        <span class="mhead__nums">${num(summary.goals_a, 0)}<i>—</i>${num(summary.goals_b, 0)}</span>
-        <span class="mhead__side">B</span>
+      <div class="score__board">
+        <span class="score__n">${num(summary.goals_a, 0)}</span>
+        <span class="score__sep" aria-hidden="true"></span>
+        <span class="score__n">${num(summary.goals_b, 0)}</span>
+        <span class="score__who">${teamTag('A')}</span>
+        <span></span>
+        <span class="score__who">${teamTag('B')}</span>
       </div>
       ${
         mvp
-          ? `<a class="mhead__mvp" href="${href('jugador', mvp.id)}">
-              <span class="kicker kicker--acid">MVP del partido</span>
-              <span class="mhead__mvpname">${esc(mvp.name)}</span>
-              <span class="mhead__mvpnote">${rating(mvp.stats?.avg_rating)}</span>
+          ? `<a class="mvp" href="${href('jugador', mvp.player.id)}">
+              ${avatar(mvp.player, 48)}
+              <span class="mvp__text"><b>${esc(mvp.player.name)}</b><span>MVP del partido</span></span>
+              ${rateBadge(mvp.score, 'rate--ink')}
             </a>`
           : ''
       }
-    </header>
+    </section>
+
+    ${
+      prog
+        ? `<section class="prog" aria-label="Tus votos">
+            <div class="prog__row">
+              <b>${prog.done === prog.total ? 'Ya has votado a todos' : `Has votado a ${prog.done} de ${prog.total}`}</b>
+              <span>${pct}%</span>
+            </div>
+            <div class="prog__bar"><i style="width:${pct}%"></i></div>
+          </section>`
+        : ''
+    }
 
     ${
       lineup.length
-        ? `<section class="block">
-            ${sectionHead('Alineaciones', 'Quién jugó')}
-            <div class="teams">
-              <div class="team">
-                <h3 class="team__title"><span class="tag">A</span> Equipo A</h3>
-                <ol class="lineup">${teamA.length ? teamA.map(lineRow).join('') : '<li class="lineup__empty">Sin jugadores</li>'}</ol>
-              </div>
-              <div class="team">
-                <h3 class="team__title"><span class="tag">B</span> Equipo B</h3>
-                <ol class="lineup">${teamB.length ? teamB.map(lineRow).join('') : '<li class="lineup__empty">Sin jugadores</li>'}</ol>
-              </div>
-            </div>
-          </section>`
-        : voidBlock('Sin alineación', 'El admin todavía no ha publicado quién juega este partido.')
-    }
-
-    ${
-      isClosed
-        ? `<section class="block">
-            ${sectionHead('Votaciones', 'Notas del partido')}
-            <ol class="ratingList">
-              ${lineup
-                .filter((l) => l.avg_score != null)
-                .sort((a, b) => b.avg_score - a.avg_score)
-                .map(
-                  (l) => `<li class="ratingRow">
-                    <span class="ratingRow__name">${esc(l.player.name)}</span>
-                    <span class="ratingRow__bar"><i style="width:${Math.max(4, (l.avg_score / 10) * 100)}%"></i></span>
-                    <span class="ratingRow__value">${rating(l.avg_score)}</span>
-                    <span class="ratingRow__votes">${num(l.votes, 0)} votos</span>
-                  </li>`
-                )
-                .join('') || '<li class="lineup__empty">Sin notas registradas</li>'}
-            </ol>
-          </section>`
-        : ''
-    }
-
-    ${
-      open
-        ? `<section class="block">
-            ${sectionHead('Votar', 'Pon la nota', me ? '' : '<span class="chip chip--warn">Elige jugador primero</span>')}
-            ${
-              me
-                ? `<p class="hint">Estás votando como <b>${esc(playerById(me)?.name || 'tu jugador')}</b>. Una nota por jugador y partido.</p>`
-                : `<p class="hint">Entra y elige quién eres para poder votar.</p>`
-            }
-            <ol class="votes">${lineup.map(voteRow).join('') || '<li class="lineup__empty">Sin alineación publicada</li>'}</ol>
-          </section>`
-        : ''
+        ? `<p class="hint hint--tap">Toca a un jugador para ${open ? 'votarle y ' : ''}ver qué nota le ha puesto cada uno.</p>
+           <div class="teams">
+             ${teamBlock('A', lineup.filter((l) => l.team === 'A'), summary.goals_a, detail)}
+             ${teamBlock('B', lineup.filter((l) => l.team === 'B'), summary.goals_b, detail)}
+           </div>`
+        : empty('Sin alineación', 'El admin todavía no ha publicado quién juega este partido.')
     }
   </div>`;
 
   return {
     html,
     mount(root) {
-      root.querySelectorAll('.vote').forEach((row) => {
-        row.addEventListener('click', async (ev) => {
-          const btn = ev.target.closest('.vote__btn');
-          if (!btn || btn.disabled) return;
-          const score = Number(btn.dataset.score);
-          const target = row.dataset.target;
-          btn.disabled = true;
-          try {
-            await castVote(summary.id, target, score);
-            row.querySelectorAll('.vote__btn').forEach((b) => {
-              b.classList.toggle('is-on', b === btn);
-              b.disabled = true;
-            });
-            const meta = row.querySelector('.vote__meta');
-            if (meta) meta.textContent = `Tu nota: ${score}`;
-            toast('Nota guardada');
-          } catch (err) {
-            btn.disabled = false;
-            toast(errorMessage(err), 'error');
-          }
+      const refresh = async () => {
+        try {
+          await loadCore();
+          const next = await matchView(id);
+          root.innerHTML = next.html;
+          next.mount(root);
+        } catch (err) {
+          toast(errorMessage(err), 'error');
+        }
+      };
+
+      root.querySelectorAll('[data-player]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const row = lineup.find((l) => l.player_id === btn.dataset.player);
+          if (row) openPlayerSheet(detail, row, refresh);
         });
       });
     },
   };
+}
+
+/** Hoja de un jugador en un partido: nota para poner (si toca) y todas las notas recibidas. */
+function openPlayerSheet(detail, row, refresh) {
+  const p = row.player;
+  const st = voteStatus(detail, p.id);
+  const votes = detail.votesByTarget.get(p.id) || [];
+  const me = state.me;
+
+  const summary = votes.length
+    ? `<div class="vs__sum">
+        <span class="vs__avg">${rating2(row.avg_score)}</span>
+        <span class="vs__txt">de media con ${esc(plural(votes.length, 'nota', 'notas'))}</span>
+      </div>`
+    : '<p class="hint">Todavía nadie ha votado a este jugador.</p>';
+
+  const voteBlock = st.can
+    ? `<div class="vs__block">
+        <h3 class="vs__label">Tu nota para ${esc(p.name)}</h3>
+        <div class="scale" role="radiogroup" aria-label="Nota del 1 al 10">
+          ${Array.from({ length: 10 }, (_, i) => i + 1)
+            .map((n) => `<button class="scale__btn" type="button" role="radio" aria-checked="false" data-score="${n}">${n}</button>`)
+            .join('')}
+        </div>
+        <p class="hint">No se puede cambiar después. Si te equivocas, solo el admin puede corregirla.</p>
+      </div>`
+    : REASONS[st.reason]
+    ? `<p class="vs__note">${esc(REASONS[st.reason])}</p>`
+    : '';
+
+  const voters = votes.length
+    ? `<h3 class="vs__label">Quién le ha puesto qué</h3>
+       <ul class="voters">
+         ${votes
+           .map((v) => {
+             const who = playerById(v.voter);
+             const mine = v.voter === me;
+             return `<li class="voters__row">
+               ${avatar(who, 36)}
+               <span class="voters__name">${esc(who?.name || 'Jugador')}${mine ? ' <i>(tú)</i>' : ''}</span>
+               ${voteBadge(v.score)}
+             </li>`;
+           })
+           .join('')}
+       </ul>`
+    : '';
+
+  let chosen = null;
+  const s = sheet({
+    title: p.name,
+    subtitle: `${teamName(row.team)}, ${plural(row.goals ?? 0, 'gol', 'goles')}`,
+    body: `<div class="vs">${summary}${voteBlock}${voters}</div>`,
+    actions: st.can
+      ? [
+          { id: 'cancel', label: 'Cancelar', variant: 'btn--ghost', onClick: () => s.close() },
+          {
+            id: 'confirm',
+            label: 'Elige una nota',
+            variant: 'btn--acid',
+            disabled: true,
+            onClick: async () => {
+              if (!chosen) return;
+              const btn = s.action('confirm');
+              btn.disabled = true;
+              btn.textContent = 'Guardando…';
+              try {
+                await castVote(detail.summary.id, p.id, chosen);
+                s.close();
+                toast('Nota guardada');
+                refresh();
+              } catch (err) {
+                toast(errorMessage(err), 'error');
+                btn.disabled = false;
+                btn.textContent = `Confirmar un ${chosen}`;
+              }
+            },
+          },
+        ]
+      : [{ id: 'close', label: 'Cerrar', variant: 'btn--ghost', onClick: () => s.close() }],
+  });
+
+  s.el.querySelector('.scale')?.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-score]');
+    if (!btn) return;
+    chosen = Number(btn.dataset.score);
+    s.el.querySelectorAll('.scale__btn').forEach((b) => {
+      const on = b === btn;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-checked', String(on));
+    });
+    const confirm = s.action('confirm');
+    confirm.disabled = false;
+    confirm.textContent = `Confirmar un ${chosen}`;
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -503,23 +559,23 @@ export async function matchView(id) {
 /* ------------------------------------------------------------------ */
 
 function chartSVG(points) {
-  const w = 720;
-  const h = 220;
-  const padX = 14;
-  const padY = 18;
+  const w = 600;
+  const h = 200;
+  const padX = 12;
+  const padY = 16;
   const xs = (i) => padX + (i * (w - padX * 2)) / Math.max(points.length - 1, 1);
   const ys = (v) => h - padY - ((Math.min(10, Math.max(1, v)) - 1) / 9) * (h - padY * 2);
 
   const coords = points.map((v, i) => [xs(i), ys(v)]);
   const line = coords.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
   const area = `${line} L${xs(points.length - 1).toFixed(1)},${h - padY} L${padX},${h - padY} Z`;
-  const grid = [3, 5, 7, 9].map((v) => `<line x1="${padX}" x2="${w - padX}" y1="${ys(v)}" y2="${ys(v)}" class="chart__grid"/>`).join('');
+  const grid = [4, 6, 8].map((v) => `<line x1="${padX}" x2="${w - padX}" y1="${ys(v)}" y2="${ys(v)}" class="chart__grid"/>`).join('');
 
-  return `<svg class="chart__svg" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Evolución de la nota">
+  return `<svg class="chart__svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="Evolución de la nota partido a partido">
     ${grid}
     <path class="chart__area" d="${area}"/>
-    <path class="chart__line" d="${line}" vector-effect="non-scaling-stroke"/>
-    ${coords.map(([x, y]) => `<circle class="chart__dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" vector-effect="non-scaling-stroke"/>`).join('')}
+    <path class="chart__line" d="${line}"/>
+    ${coords.map(([x, y]) => `<circle class="chart__dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5"/>`).join('')}
   </svg>`;
 }
 
@@ -528,8 +584,9 @@ export async function playerView(id) {
 
   if (!p) {
     return {
-      html: `<div class="view">${head('Jugador', 'NO <span class="outline">EXISTE</span>')}
-        ${voidBlock('Jugador no encontrado', 'Puede que se haya eliminado de la plantilla.')}</div>`,
+      html: `<div class="view">
+        <a class="back" href="${href('plantilla')}">Plantilla</a>
+        ${empty('Jugador no encontrado', 'Puede que se haya eliminado de la plantilla.')}</div>`,
       mount() {},
     };
   }
@@ -538,62 +595,64 @@ export async function playerView(id) {
   const history = await playerHistory(p.id);
   const rated = history.filter((h) => h.avg_score != null).slice(0, 10).reverse();
 
+  const stat = (value, label) => `<div class="stat"><span class="stat__v">${value}</span><span class="stat__l">${esc(label)}</span></div>`;
+
   const html = `<div class="view">
-    <header class="phead">
-      <div class="phead__media">${photoBlock(p, 'ph--hero')}</div>
-      <span class="phead__ghost" aria-hidden="true">${esc(jersey(p))}</span>
-      <div class="phead__id">
-        <span class="kicker">Dorsal ${esc(p.shirt_number ? pad2(p.shirt_number) : '—')} · Plantilla</span>
-        <h1 class="phead__name">${esc(p.name)}</h1>
-        <p class="phead__sub">${num(s.played, 0)} partidos · ${num(s.wins, 0)} victorias · ${num(s.goals, 0)} goles</p>
+    <a class="back" href="${href('plantilla')}">Plantilla</a>
+
+    <header class="phero">
+      <div class="phero__photo">${photoBlock(p)}</div>
+      <div class="phero__id">
+        <h1 class="phero__name">${esc(p.name)}</h1>
+        <div class="phero__tags">
+          ${p.shirt_number ? pill(`Dorsal ${pad2(p.shirt_number)}`) : ''}
+          ${p.can_vote === false ? pill('Comodín') : ''}
+        </div>
       </div>
     </header>
 
-    <div class="figures figures--grid">
-      <div class="figure figure--cell"><span class="figure__value">${num(s.played, 0)}</span><span class="figure__label">Partidos</span></div>
-      <div class="figure figure--cell"><span class="figure__value">${num(s.wins, 0)}</span><span class="figure__label">Victorias</span></div>
-      <div class="figure figure--cell"><span class="figure__value">${num(s.goals, 0)}</span><span class="figure__label">Goles</span></div>
-      <div class="figure figure--cell"><span class="figure__value figure__value--acid">${num(s.mvps, 0)}</span><span class="figure__label">MVP</span></div>
-      <div class="figure figure--cell"><span class="figure__value">${rating(s.avg_rating)}</span><span class="figure__label">Nota media</span></div>
-      <div class="figure figure--cell"><span class="figure__value">${s.conceded_pm == null ? '—' : Number(s.conceded_pm).toFixed(2).replace('.', ',')}</span><span class="figure__label">Encajados / partido</span></div>
+    <div class="stats">
+      ${stat(num(s.played, 0), 'Partidos')}
+      ${stat(num(s.wins, 0), 'Victorias')}
+      ${stat(num(s.goals, 0), 'Goles')}
+      ${stat(num(s.mvps, 0), 'MVP')}
+      ${stat(rating2(s.avg_rating), 'Nota media')}
+      ${stat(s.conceded_pm == null ? '–' : Number(s.conceded_pm).toFixed(2).replace('.', ','), 'Encajados por partido')}
     </div>
 
-    <section class="block chart">
-      ${sectionHead('Evolución', 'Nota partido a partido')}
-      ${rated.length >= 2
-        ? `${chartSVG(rated.map((r) => Number(r.avg_score)))}
-           <div class="chart__axis">
-             ${rated.map((r) => `<span>${dateParts(r.played_on).day} ${dateParts(r.played_on).month}</span>`).join('')}
-           </div>`
-        : '<p class="hint">Necesita al menos dos partidos con notas para dibujar la evolución.</p>'}
-    </section>
+    ${section('Evolución de la nota')}
+    ${
+      rated.length >= 2
+        ? `<div class="chart">
+            ${chartSVG(rated.map((r) => Number(r.avg_score)))}
+            <div class="chart__axis"><span>${esc(shortDate(rated[0].played_on))}</span><span>${esc(shortDate(rated[rated.length - 1].played_on))}</span></div>
+          </div>`
+        : '<p class="hint">Hacen falta al menos dos partidos con notas para dibujar la evolución.</p>'
+    }
 
-    <section class="block">
-      ${sectionHead('Historial', 'Últimos partidos')}
-      ${
-        history.length
-          ? `<ol class="hlist">
-              ${history
-                .slice(0, 12)
-                .map((h) => {
-                  const gf = h.gf ?? 0;
-                  const ga = h.ga ?? 0;
-                  const outcome = gf > ga ? 'V' : gf === ga ? 'E' : 'D';
-                  return `<li>
-                    <a class="hrow" href="${href('partidos', h.match_id)}">
-                      <span class="hrow__outcome hrow__outcome--${outcome.toLowerCase()}">${outcome}</span>
-                      <span class="hrow__date"><b>${dateParts(h.played_on).day}</b>${dateParts(h.played_on).month}</span>
-                      <span class="hrow__score">${num(gf, 0)}<i>—</i>${num(ga, 0)}</span>
-                      <span class="hrow__goals">${num(h.goals, 0)} goles</span>
-                      <span class="hrow__rating ${h.avg_score == null ? 'is-void' : ''}">${rating(h.avg_score)}</span>
-                    </a>
-                  </li>`;
-                })
-                .join('')}
-            </ol>`
-          : '<p class="hint">Todavía no hay partidos disputados.</p>'
-      }
-    </section>
+    ${section('Últimos partidos')}
+    ${
+      history.length
+        ? `<ol class="hlist">
+            ${history
+              .slice(0, 12)
+              .map((h) => {
+                const gf = h.gf ?? 0;
+                const ga = h.ga ?? 0;
+                const outcome = gf > ga ? 'V' : gf === ga ? 'E' : 'D';
+                return `<li><a class="hrow" href="${href('partidos', h.match_id)}">
+                  <span class="hrow__res hrow__res--${outcome.toLowerCase()}" aria-label="${outcome === 'V' ? 'Victoria' : outcome === 'E' ? 'Empate' : 'Derrota'}">${outcome}</span>
+                  <span class="hrow__main">
+                    <b class="hrow__score">${num(gf, 0)}<i aria-hidden="true"></i>${num(ga, 0)}</b>
+                    <span class="hrow__sub">${esc(shortDate(h.played_on))}, con los ${esc(teamName(h.team))}, ${esc(plural(h.goals ?? 0, 'gol', 'goles'))}</span>
+                  </span>
+                  ${rateBadge(h.avg_score)}
+                </a></li>`;
+              })
+              .join('')}
+          </ol>`
+        : '<p class="hint">Todavía no ha jugado ningún partido.</p>'
+    }
   </div>`;
 
   return { html, mount() {} };
@@ -608,25 +667,17 @@ export async function squad() {
   const inactive = state.players.filter((p) => p.active === false);
 
   const card = (p) => `<a class="scard" href="${href('jugador', p.id)}">
-      <div class="scard__media">${photoBlock(p, 'ph--squad')}</div>
-      <span class="scard__num">${esc(jersey(p))}</span>
-      <span class="scard__name">${esc(p.name)}</span>
-      <span class="scard__stat">${rating(p.stats?.avg_rating)} · ${num(p.stats?.goals, 0)} G</span>
+      <span class="scard__photo">${photoBlock(p)}${p.shirt_number ? `<span class="scard__num">${pad2(p.shirt_number)}</span>` : ''}</span>
+      <b class="scard__name">${esc(p.name)}</b>
+      <span class="scard__stat">${esc(plural(p.stats?.goals ?? 0, 'gol', 'goles'))}${p.stats?.avg_rating != null ? `, nota ${esc(rating(p.stats.avg_rating))}` : ''}</span>
     </a>`;
 
   const html = `<div class="view">
-    ${head('Plantilla', 'EL <span class="outline">EQUIPO</span>', `${players.length} jugadores`)}
-    ${
-      players.length
-        ? `<div class="squad">${players.map(card).join('')}</div>`
-        : voidBlock('Plantilla vacía', 'Añade al primer jugador desde administración.')
-    }
+    ${pageTitle('Plantilla', plural(players.length, 'jugador', 'jugadores'))}
+    ${players.length ? `<div class="squad">${players.map(card).join('')}</div>` : empty('Plantilla vacía', 'El admin añade a los jugadores desde Admin.')}
     ${
       inactive.length
-        ? `<section class="block">
-            ${sectionHead('Fuera', 'Jugadores inactivos')}
-            <div class="squad squad--dim">${inactive.map(card).join('')}</div>
-          </section>`
+        ? `${section('Fuera de la plantilla')}<div class="squad squad--dim">${inactive.map(card).join('')}</div>`
         : ''
     }
   </div>`;
