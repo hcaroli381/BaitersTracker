@@ -65,10 +65,13 @@
 
 .prog__bar i {
   display: block;
+  width: 100%;
   height: 100%;
   border-radius: 4px;
   background: var(--acid);
-  transition: width 0.4s var(--ease);
+  transform: scaleX(var(--p, 0));
+  transform-origin: left;
+  transition: transform 0.4s var(--ease);
 }
 
 .hint--tap {

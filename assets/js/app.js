@@ -308,10 +308,13 @@ function startLive() {
   subscribeLive(() => refreshRoute());
 }
 
+/** Refresco por cambios de otros: sin subir al principio ni repetir la entrada. */
 async function refreshRoute() {
   if (document.querySelector('.sheet')) return;
-  await loadCore().catch(() => {});
-  renderRoute();
+  // No pisar un formulario a medio rellenar (p. ej. en Admin).
+  const active = document.activeElement;
+  if (active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return;
+  renderRoute({ animate: false, scroll: false });
 }
 
 function meChip() {
@@ -361,7 +364,7 @@ function renderShell() {
   if (!window.__btRouter) {
     window.__btRouter = true;
     window.addEventListener('hashchange', () => {
-      if (shellReady) renderRoute();
+      if (shellReady) renderRoute({ transition: true });
     });
   }
 
@@ -372,10 +375,17 @@ function renderShell() {
 /* Router                                                              */
 /* ------------------------------------------------------------------ */
 
-async function renderRoute() {
+function reduceMotion() {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+}
+
+async function renderRoute({ animate = true, scroll = true, transition = false } = {}) {
   const route = parseRoute();
   const host = document.getElementById('view');
   if (!host) return;
+
+  const useTransition =
+    transition && animate && typeof document.startViewTransition === 'function' && !reduceMotion();
 
   document.querySelectorAll('[data-nav]').forEach((a) => {
     const active =
@@ -387,7 +397,7 @@ async function renderRoute() {
     else a.removeAttribute('aria-current');
   });
 
-  host.innerHTML = '<div class="loading"><span></span></div>';
+  if (animate && !useTransition) host.innerHTML = '<div class="loading"><span></span></div>';
 
   // Datos al día en cada pantalla: las notas de los demás cambian entre visitas.
   await loadCore().catch(() => {});
@@ -426,15 +436,37 @@ async function renderRoute() {
     };
   }
 
-  host.innerHTML = view.html;
-  try {
-    view.mount?.(host);
-  } catch (err) {
-    console.error(err);
+  const paint = () => {
+    // Con View Transition la vista nueva debe estar ya asentada para la captura.
+    host.classList.toggle('is-quiet', !animate || useTransition);
+    host.innerHTML = view.html;
+    try {
+      view.mount?.(host);
+    } catch (err) {
+      console.error(err);
+    }
+    if (animate && !useTransition) {
+      stagger(host);
+      animateCounts(host);
+    }
+    if (scroll) window.scrollTo(0, 0);
+  };
+
+  if (useTransition) {
+    let painted = false;
+    const run = () => {
+      painted = true;
+      paint();
+    };
+    try {
+      await document.startViewTransition(run).updateCallbackDone;
+    } catch {
+      // Si el navegador cancela la transición, el cambio ya se ha hecho.
+      if (!painted) paint();
+    }
+  } else {
+    paint();
   }
-  stagger(host);
-  animateCounts(host);
-  window.scrollTo(0, 0);
 }
 
 /* ------------------------------------------------------------------ */

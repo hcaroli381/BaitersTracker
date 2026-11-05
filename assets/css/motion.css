@@ -55,7 +55,7 @@
 
 @keyframes bt-grow {
   from {
-    width: 0;
+    transform: scaleX(0);
   }
 }
 
@@ -82,7 +82,7 @@
 
 /* ---------------------------------------------------------------- */
 /* Entrada en cascada                                                */
-/* `--i` lo pone `stagger()` en core.js (0–11).                      */
+/* `--i` lo pone `stagger()` en core.js (0–7).                       */
 /* ---------------------------------------------------------------- */
 
 .view > *,
@@ -111,6 +111,13 @@
 
 .scale {
   --stagger: 24ms;
+}
+
+/* Refresco en directo: el contenido cambia sin repetir la entrada. */
+.is-quiet *,
+.is-quiet *::before,
+.is-quiet *::after {
+  animation: none !important;
 }
 
 /* ---------------------------------------------------------------- */
@@ -205,11 +212,31 @@
   transform: scale(0.985);
 }
 
+.topnav__item {
+  transition: background 0.16s var(--ease), color 0.16s var(--ease), transform 0.14s var(--ease-out);
+}
+
+.sheet__x:active,
+.topnav__item:active,
 .rate:active,
 .pill:active,
 .seg__btn:active,
 .iconbtn:active {
   transform: scale(0.94);
+}
+
+@media (hover: hover) {
+  .scard:hover:not(:active),
+  .prow:hover:not(:active),
+  .mrow:hover:not(:active),
+  .lrow:hover:not(:active),
+  .hrow:hover:not(:active) {
+    transform: translateY(-2px);
+  }
+
+  .sheet__x:hover:not(:active) {
+    transform: scale(1.06);
+  }
 }
 
 /* ---------------------------------------------------------------- */
@@ -226,5 +253,19 @@
     transition-duration: 0.001ms !important;
     transition-delay: 0.001ms !important;
     scroll-behavior: auto !important;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
+  }
+}
+
+/* Transición entre pantallas (View Transitions API). */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.22s;
+    animation-timing-function: var(--ease-out);
   }
 }

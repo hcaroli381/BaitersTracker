@@ -250,21 +250,41 @@ export function avatar(p, size = 44) {
 /* Feedback                                                            */
 /* ------------------------------------------------------------------ */
 
-let toastTimer = null;
+let toastHost = null;
 
-export function toast(message, kind = 'info') {
-  let node = document.querySelector('.toast');
-  if (!node) {
-    node = document.createElement('div');
-    node.className = 'toast';
-    node.setAttribute('role', 'status');
-    document.body.appendChild(node);
+function ensureToastHost() {
+  if (!toastHost || !toastHost.isConnected) {
+    toastHost = document.createElement('div');
+    toastHost.className = 'toasts';
+    document.body.appendChild(toastHost);
   }
+  return toastHost;
+}
+
+/** Aviso breve y apilable: se ven como mucho los tres últimos. */
+export function toast(message, kind = 'info') {
+  const host = ensureToastHost();
+  while (host.children.length >= 3) host.firstElementChild?.remove();
+
+  const node = document.createElement('div');
+  node.className = 'toast';
   node.dataset.kind = kind;
+  node.setAttribute('role', 'status');
   node.textContent = message;
-  node.classList.add('is-on');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => node.classList.remove('is-on'), 3600);
+  host.appendChild(node);
+  requestAnimationFrame(() => node.classList.add('is-on'));
+
+  setTimeout(() => {
+    node.classList.remove('is-on');
+    let gone = false;
+    const remove = () => {
+      if (gone) return;
+      gone = true;
+      node.remove();
+    };
+    node.addEventListener('transitionend', remove, { once: true });
+    setTimeout(remove, 320);
+  }, 3600);
 }
 
 export function errorMessage(err) {
@@ -291,11 +311,12 @@ let closeSheet = null;
  */
 export function sheet({ title, subtitle = '', body = '', actions = [] }) {
   closeSheet?.();
+  const previousFocus = document.activeElement;
   const wrap = document.createElement('div');
   wrap.className = 'sheet';
   wrap.innerHTML = `
     <div class="sheet__scrim" data-close></div>
-    <div class="sheet__panel" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+    <div class="sheet__panel" role="dialog" aria-modal="true" aria-label="${esc(title)}" tabindex="-1">
       <header class="sheet__head">
         <span class="sheet__grab" aria-hidden="true"></span>
         <h2 class="sheet__title">${esc(title)}</h2>
@@ -306,6 +327,7 @@ export function sheet({ title, subtitle = '', body = '', actions = [] }) {
       ${actions.length ? '<footer class="sheet__foot"></footer>' : ''}
     </div>`;
   stagger(wrap);
+  const panel = wrap.querySelector('.sheet__panel');
   const foot = wrap.querySelector('.sheet__foot');
   actions.forEach((a) => {
     const btn = document.createElement('button');
@@ -319,21 +341,75 @@ export function sheet({ title, subtitle = '', body = '', actions = [] }) {
   });
   document.body.appendChild(wrap);
   document.body.classList.add('is-locked');
-  requestAnimationFrame(() => wrap.classList.add('is-on'));
 
+  const focusables = () =>
+    [
+      ...panel.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ),
+    ].filter((el) => el.getClientRects().length > 0);
+
+  let closing = false;
   const close = () => {
+    if (closing || !wrap.isConnected) return;
+    closing = true;
     wrap.classList.remove('is-on');
-    document.body.classList.remove('is-locked');
-    setTimeout(() => wrap.remove(), 220);
     document.removeEventListener('keydown', onKey);
     closeSheet = null;
+
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      wrap.remove();
+      if (!document.querySelector('.sheet.is-on')) {
+        document.body.classList.remove('is-locked');
+        if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+      }
+    };
+    panel.addEventListener('transitionend', (ev) => {
+      if (ev.target === panel && (ev.propertyName === 'transform' || ev.propertyName === 'opacity')) finish();
+    });
+    setTimeout(finish, 380);
   };
+
   const onKey = (e) => {
-    if (e.key === 'Escape') close();
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const list = focusables();
+    if (!list.length) {
+      e.preventDefault();
+      panel.focus({ preventScroll: true });
+      return;
+    }
+    const first = list[0];
+    const last = list[list.length - 1];
+    const active = document.activeElement;
+    if (active === panel || !panel.contains(active)) {
+      e.preventDefault();
+      (e.shiftKey ? last : first).focus();
+      return;
+    }
+    if (e.shiftKey && active === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
   };
+
   closeSheet = close;
   wrap.querySelectorAll('[data-close]').forEach((n) => n.addEventListener('click', close));
   document.addEventListener('keydown', onKey);
+  requestAnimationFrame(() => {
+    wrap.classList.add('is-on');
+    panel.focus({ preventScroll: true });
+  });
   return { el: wrap, close, action: (id) => wrap.querySelector(`[data-action="${id}"]`) };
 }
 
@@ -382,13 +458,13 @@ const STAGGER_TARGETS = [
 ];
 
 /**
- * Reparte `--i` (0–11) por los hijos de listas y bloques para que
+ * Reparte `--i` (0–7) por los hijos de listas y bloques para que
  * motion.css los anime en cascada. Sin llamada, entran todos a la vez.
  */
 export function stagger(root = document) {
   STAGGER_TARGETS.forEach((selector) => {
     root.querySelectorAll(selector).forEach((el, index) => {
-      if (!el.style.getPropertyValue('--i')) el.style.setProperty('--i', String(Math.min(index, 11)));
+      if (!el.style.getPropertyValue('--i')) el.style.setProperty('--i', String(Math.min(index, 7)));
     });
   });
 }
@@ -401,18 +477,27 @@ export function animateCounts(root = document) {
   nodes.forEach((el) => {
     const target = Number(el.dataset.count);
     if (!Number.isFinite(target)) return;
+    // Ya se ha contado este mismo valor: no volver a empezar desde cero.
+    if (el.dataset.counted === String(target)) return;
+    el.dataset.counted = String(target);
+    if (document.hidden) {
+      el.textContent = String(target);
+      return;
+    }
     const duration = 620;
     const started = performance.now();
+    if (el._countFrame) cancelAnimationFrame(el._countFrame);
+    clearTimeout(el._countTimer);
     const step = (now) => {
       const t = Math.min(1, (now - started) / duration);
       const eased = 1 - Math.pow(1 - t, 3);
       el.textContent = String(Math.round(target * eased));
-      if (t < 1) requestAnimationFrame(step);
+      if (t < 1) el._countFrame = requestAnimationFrame(step);
     };
     el.textContent = '0';
-    requestAnimationFrame(step);
+    el._countFrame = requestAnimationFrame(step);
     // Red de seguridad: si la pestaña se oculta, el número no se queda a medias.
-    setTimeout(() => {
+    el._countTimer = setTimeout(() => {
       el.textContent = String(target);
     }, duration + 400);
   });

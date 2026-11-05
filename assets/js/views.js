@@ -605,7 +605,7 @@ export async function matchView(id) {
               <b>${prog.done === prog.total ? 'Ya has votado a todos' : `Has votado a ${prog.done} de ${prog.total}`}</b>
               <span>${pct}%</span>
             </div>
-            <div class="prog__bar"><i style="width:${pct}%"></i></div>
+            <div class="prog__bar"><i style="--p:${Math.max(0, Math.min(100, Number(pct) || 0)) / 100}"></i></div>
           </section>`
         : ''
     }
