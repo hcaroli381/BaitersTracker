@@ -364,8 +364,8 @@ Siguiente paso natural: fotos y el primer partido.
 - **PWA / icono en el móvil**: no implementado.
 - **Verificación visual**: en este entorno no hay navegador automatizado, así que la interfaz está
   verificada por revisión de código, sintaxis y HTTP, no con capturas. Revisar en móvil real.
-- **Pruebas de la v1.7**: no se han podido ejecutar (sin acceso al registro de npm para `@electric-sql/pglite`).
-  Revisar en el móvil: cambiar dorsal, editar un voto desde Admin y ver un voto nuevo sin recargar.
+- **Pruebas**: la suite local (`cd tests && npm install && npm test`) se ejecuta completa. Queda revisar en
+  móviles reales el voto en directo y la edición de votos desde Admin.
 - **Vistas y `security_invoker`**: si en el futuro se crea una vista nueva, hay que repetir
   `set (security_invoker = true)` y revocar `anon`, o volverá a haber fuga de datos.
 
@@ -428,7 +428,8 @@ update public.players set can_vote = false where name = 'Nombre';
 ## 11. Migraciones y pruebas
 
 **Estado:** 01 → 03 aplicadas en producción el 5/11/2026. **04** y **05** aplicadas. **06** (realtime) está
-en el repo para activar el tiempo real; el cambio de dorsal propio se retiró de la interfaz. **07** aplicada
+en el repo para activar el tiempo real; el cambio de dorsal propio se retiró de la interfaz y su RPC
+(`change_my_number`) sigue en la base sin que la llame nadie. **07** aplicada
 en producción el 6/11/2026: unifica la huella del móvil (ver §11). Las migraciones 01-03 se aplicaron a mano; la 05, la 06 y la 07 con el conector de Supabase.
 Comprobado después: una sola firma por función, `appearances` con clave `(match_id, player_id, segment)`
 y las cuatro vistas respondiendo. Al pasar la clave a tres columnas hubo que quitar las dos claves

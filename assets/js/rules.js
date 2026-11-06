@@ -12,9 +12,6 @@ export const VOTE_DELAY_MS = 60 * 60 * 1000;
 /** Hora por defecto si un partido antiguo no tiene hora guardada. */
 export const DEFAULT_KICKOFF_TIME = '21:00';
 
-/** Tramos máximos de un partido (la base lo comprueba igual). */
-export const MAX_SEGMENTS = 9;
-
 /* ------------------------------------------------------------------ */
 /* Fechas y ventana de votación                                        */
 /* ------------------------------------------------------------------ */

@@ -23,10 +23,6 @@ export function sb() {
   return _client;
 }
 
-export function resetClient() {
-  _client = null;
-}
-
 /* ------------------------------------------------------------------ */
 /* Estado en memoria                                                   */
 /* ------------------------------------------------------------------ */
@@ -426,10 +422,6 @@ export function parseRoute() {
 
 export function href(name, id) {
   return `#/${name}${id ? `/${id}` : ''}`;
-}
-
-export function navigate(name, id) {
-  location.hash = href(name, id);
 }
 
 /* ------------------------------------------------------------------ */

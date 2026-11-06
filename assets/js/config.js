@@ -50,26 +50,6 @@ export function getConfig() {
   };
 }
 
-/** Guarda la conexión. Devuelve false si la clave era una secret key. */
-export function saveConfig(url, key) {
-  const value = String(key || '').trim();
-  if (isSecretKey(value)) {
-    console.warn(
-      'BaitersTracker: esa es la clave secreta del proyecto. Usa la publishable (sb_publishable_…); no se ha guardado.'
-    );
-    return false;
-  }
-  localStorage.setItem(
-    'bt.supabase',
-    JSON.stringify({ url: String(url || '').trim().replace(/\/+$/, ''), key: value })
-  );
-  return true;
-}
-
-export function clearConfig() {
-  localStorage.removeItem('bt.supabase');
-}
-
 export function isConfigured() {
   const c = getConfig();
   return Boolean(c.url && c.key);
