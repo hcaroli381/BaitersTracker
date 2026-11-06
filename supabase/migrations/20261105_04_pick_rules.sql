@@ -30,7 +30,11 @@ comment on column public.settings.wildcards_pickable is
 
 -- 2. claim_player: un jugador, un móvil ----------------------------
 -- Se conserva la firma de producción: (text, uuid, integer).
-create or replace function public.claim_player(p_token text, p_player uuid, p_number integer)
+-- Se rehace con DROP para que la migración 07 pueda declarar `p_number`
+-- con DEFAULT: CREATE OR REPLACE no permite añadir valores por defecto.
+drop function if exists public.claim_player(text, uuid, integer);
+
+create function public.claim_player(p_token text, p_player uuid, p_number integer)
 returns void
 language plpgsql
 security definer

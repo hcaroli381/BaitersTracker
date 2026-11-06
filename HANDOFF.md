@@ -427,8 +427,9 @@ update public.players set can_vote = false where name = 'Nombre';
 
 ## 11. Migraciones y pruebas
 
-**Estado:** 01 → 03 aplicadas en producción el 5/11/2026. **05** (voto único) aplicada. **06** (realtime) está
-en el repo para activar el tiempo real; el cambio de dorsal propio se retiró de la interfaz. Las migraciones 01-03 se aplicaron a mano; la 05 y la 06 con el conector de Supabase.
+**Estado:** 01 → 03 aplicadas en producción el 5/11/2026. **04** y **05** aplicadas. **06** (realtime) está
+en el repo para activar el tiempo real; el cambio de dorsal propio se retiró de la interfaz. **07** aplicada
+en producción el 6/11/2026: unifica la huella del móvil (ver §11). Las migraciones 01-03 se aplicaron a mano; la 05, la 06 y la 07 con el conector de Supabase.
 Comprobado después: una sola firma por función, `appearances` con clave `(match_id, player_id, segment)`
 y las cuatro vistas respondiendo. Al pasar la clave a tres columnas hubo que quitar las dos claves
 foráneas de `votes` hacia `appearances` (Postgres no deja cambiar la PK con ellas colgando); su
@@ -442,6 +443,7 @@ integridad la impone `cast_vote`, y se restauró la referencia de `votes` a `pla
   4. `20261105_04_pick_rules.sql` — reglas de «¿Quién eres?» y `claim_player`.
   5. `20261105_05_unique_votes.sql` — restricción de voto único.
   6. `20261105_06_self_number_realtime.sql` — publicación realtime.
+  7. `20261106_07_device_hash_consistency.sql` — la huella del móvil se resuelve igual en `me()` y en `claim_player` (md5 antiguo y sha256 nuevo). Sin ella, un móvil recién vinculado no se reconoce al recargar y su jugador ya no sale en «¿Quién eres?».
 - **La 02 depende de la 01** (usa `kickoff_at`) y **la 03 de la 02** (usa `appearances` y
   `player_match`). Si algo falla, el `begin … commit` deja todo como estaba.
 - Antes de aplicarlas en producción conviene revisar las firmas reales de las funciones en Supabase. Las

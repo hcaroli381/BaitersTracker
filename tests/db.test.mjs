@@ -29,6 +29,7 @@ const MIGRATIONS = [
   'supabase/migrations/20261105_02_team_splits.sql',
   'supabase/migrations/20261105_03_mvp_tiebreak.sql',
   'supabase/migrations/20261105_04_pick_rules.sql',
+  'supabase/migrations/20261106_07_device_hash_consistency.sql',
 ];
 
 const ADMIN = 'admin';
@@ -651,6 +652,7 @@ test('si el empate cambia, los votos del desempate anterior no cuentan', async (
 
 const TOK_A = 'a'.repeat(64);
 const TOK_B = 'b'.repeat(64);
+const TOK_C = 'c'.repeat(64);
 
 async function addFreePlayer(db, name) {
   const res = await db.query(`insert into public.players (name) values ($1) returning id`, [name]);
@@ -691,7 +693,7 @@ test('claim_player: el admin puede desactivar el bloqueo y liberar', async () =>
   // Sin bloqueo, otro móvil puede volver a cogerlo (como antes).
   await db.query(`select public.claim_player($1,$2,8)`, [TOK_B, ana]);
   const row = await db.query(`select device_hash from public.players where id = $1`, [ana]);
-  const expected = await db.query(`select md5($1) as h`, [TOK_B]);
+  const expected = await db.query(`select encode(sha256(convert_to($1, 'UTF8')), 'hex') as h`, [TOK_B]);
   assert.equal(row.rows[0].device_hash, expected.rows[0].h);
 
   await db.close();
@@ -714,5 +716,44 @@ test('ajustes de elección: por defecto bloqueado y comodines ocultos', async ()
   assert.equal(res.rows[0].lock_claimed, false);
   assert.equal(res.rows[0].wildcards_pickable, true);
 
+  await db.close();
+});
+
+test('me reconoce al móvil con la huella nueva y con la antigua', async () => {
+  const db = await freshDb();
+  const ana = await addFreePlayer(db, 'Ana');
+  const bruno = await addFreePlayer(db, 'Bruno');
+  const carla = await addFreePlayer(db, 'Carla');
+
+  // Móvil vinculado antes de la 04: huella sha256 (la que usaba private.hash_token).
+  await db.query(
+    `update public.players set device_hash = encode(sha256(convert_to($1, 'UTF8')), 'hex') where id = $2`,
+    [TOK_A, ana]
+  );
+  // Móvil vinculado con la 04: huella md5, la que dejó a los jugadores sin reconocer.
+  await db.query(`update public.players set device_hash = md5($1) where id = $2`, [TOK_C, carla]);
+  // Alta nueva con claim_player: debe guardar la huella canónica (sha256).
+  await db.query(`select public.claim_player($1,$2,9)`, [TOK_B, bruno]);
+
+  const ids = await db.query(
+    `select public.me($1) as sha, public.me($2) as md5, public.me($3) as nadie`,
+    [TOK_A, TOK_C, 'd'.repeat(64)]
+  );
+  assert.deepEqual(ids.rows[0], { sha: ana, md5: carla, nadie: null });
+
+  const stored = await db.query(`select device_hash from public.players where id = $1`, [bruno]);
+  assert.equal(stored.rows[0].device_hash.length, 64, 'las altas nuevas guardan sha256');
+
+  // El mismo móvil puede corregir su dorsal aunque su huella sea la antigua.
+  await db.query(`select public.claim_player($1,$2,10)`, [TOK_C, carla]);
+
+  // Y vota: cast_vote resuelve la identidad con public.me.
+  const match = await createMatch(db, { kickoff: new Date(Date.now() - 2 * 3600_000).toISOString() });
+  await db.query(`select public.admin_set_lineup($1,$2,$3,'A')`, [ADMIN, match, carla]);
+  await db.query(`select public.admin_set_lineup($1,$2,$3,'B')`, [ADMIN, match, bruno]);
+  await db.query(`select public.cast_vote($1,$2,$3,8::smallint)`, [TOK_B, match, carla]);
+
+  const voter = await db.query(`select voter_id from public.votes where match_id = $1`, [match]);
+  assert.equal(voter.rows[0].voter_id, bruno);
   await db.close();
 });

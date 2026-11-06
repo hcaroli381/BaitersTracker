@@ -153,6 +153,9 @@ repetir):
 2. `supabase/migrations/20261105_02_team_splits.sql`
 3. `supabase/migrations/20261105_03_mvp_tiebreak.sql`
 4. `supabase/migrations/20261105_04_pick_rules.sql`
+5. `supabase/migrations/20261105_05_unique_votes.sql`
+6. `supabase/migrations/20261105_06_self_number_realtime.sql`
+7. `supabase/migrations/20261106_07_device_hash_consistency.sql`
 
 ---
 
