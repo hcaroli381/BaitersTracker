@@ -283,6 +283,19 @@ async function start() {
     state.me = null;
   }
 
+  // Enlace directo de vinculación: #/vincular/<id>. Se limpia la dirección para que no quede
+  // en la barra ni llegue a la navegación normal.
+  const link = parseRoute();
+  const linkedPlayer =
+    link.name === 'vincular' ? state.players.find((p) => p.id === link.id) || null : null;
+  if (link.name === 'vincular') {
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+
+  if (!state.me && linkedPlayer && linkedPlayer.active !== false && !linkedPlayer.device_hash) {
+    return renderNumberStep(linkedPlayer);
+  }
+
   if (!state.me) {
     if (localStorage.getItem(NO_PLAYER) === '1') {
       renderShell();

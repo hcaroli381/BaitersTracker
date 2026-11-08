@@ -61,6 +61,9 @@ Dirección de arte: **Dark Editorial** — carbón, blanco roto y verde ácido, 
 - **Admin** — jugadores (alta por nombre, renombrar, activar, liberar móvil, corregir dorsal, borrar),
   fotografías, partidos (crear, fecha, estado, alineación con equipos y goles, y **votos**: ver, cambiar
   o quitar) y ajustes (autovoto, contraseña de admin).
+- **Enlace de vinculación** — `#/vincular/<id>` abre directamente la pantalla de dorsal de ese jugador si su
+  móvil aún no está vinculado. Se obtiene el id en Supabase (tabla `players`). Quien tenga el enlace puede
+  vincularse con ese jugador, así que envíalo solo a su dueño.
 - **En directo** — los votos, desempates y alineaciones de los demás aparecen sin recargar.
 
 ---
