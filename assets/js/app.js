@@ -174,7 +174,7 @@ function renderPick() {
 /* Pantalla: elegir dorsal                                             */
 /* ------------------------------------------------------------------ */
 
-function renderNumberStep(player) {
+function renderNumberStep(player, { forced = false } = {}) {
   window.scrollTo(0, 0);
   const taken = takenNumbers(player.id);
   const takenList = [...taken].sort((a, b) => a - b).map((n) => pad2(n)).join(', ');
@@ -200,7 +200,7 @@ function renderNumberStep(player) {
       <p class="formerr" id="numErr" hidden></p>
       <p class="hint">${takenList ? `Ya están cogidos: ${esc(takenList)}` : 'Todos los dorsales están libres.'}</p>
       <div class="pick__bar">
-        <button class="btn btn--ghost" type="button" id="numBack">Cambiar jugador</button>
+        ${forced ? '' : '<button class="btn btn--ghost" type="button" id="numBack">Cambiar jugador</button>'}
         <button class="btn btn--acid" type="submit" id="numGo">Confirmar dorsal</button>
       </div>
     </form>
@@ -217,7 +217,7 @@ function renderNumberStep(player) {
     err.hidden = true;
   });
 
-  back.addEventListener('click', () => renderPick());
+  back?.addEventListener('click', () => renderPick());
 
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -232,13 +232,13 @@ function renderNumberStep(player) {
     if (taken.has(n)) return fail(`El ${pad2(n)} ya lo tiene otro. Elige otro.`);
 
     go.disabled = true;
-    back.disabled = true;
+    if (back) back.disabled = true;
     go.textContent = 'Guardando…';
     try {
       await claimPlayer(player.id, n);
     } catch (e) {
       go.disabled = false;
-      back.disabled = false;
+      if (back) back.disabled = false;
       go.textContent = 'Confirmar dorsal';
       await loadCore().catch(() => {});
       return fail(errorMessage(e));
@@ -293,7 +293,8 @@ async function start() {
   }
 
   if (!state.me && linkedPlayer && linkedPlayer.active !== false && !linkedPlayer.device_hash) {
-    return renderNumberStep(linkedPlayer);
+    // Enlace de vinculación: sin salida a la lista ni a «Solo ver», hasta que confirme su dorsal.
+    return renderNumberStep(linkedPlayer, { forced: true });
   }
 
   if (!state.me) {
