@@ -133,6 +133,13 @@
   background: var(--line-2);
 }
 
+.cut__out {
+  color: var(--dim);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 .cut__row {
   color: var(--dim);
   font-size: 14px;
@@ -500,6 +507,38 @@
   color: var(--bad);
 }
 
+/* Varias partes: un resultado por cada tramo */
+.hrow__resbox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.hrow__resbox--multi .hrow__res {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.hrow__score--parts {
+  gap: 6px;
+  font-size: 20px;
+}
+
+.hrow__part {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hrow__score--parts em {
+  font-style: normal;
+  font-size: 14px;
+  color: var(--faint);
+}
+
 .hrow__main {
   display: grid;
   min-width: 0;
@@ -519,6 +558,11 @@
 .hrow__sub {
   color: var(--dim);
   font-size: 14px;
+}
+
+/* Resultados por tramo en el histórico del perfil */
+.hrow__resbox + .hrow__main {
+  min-width: 0;
 }
 
 /* ---------------------------------------------------------------- */

@@ -447,6 +447,9 @@ const STAGGER_TARGETS = [
   '.voters > .voters__row',
   '.lineupEdit > .lineupEdit__row',
   '.scale > .scale__btn',
+  '.seg > .seg__btn',
+  '.stats > .stat',
+  '.sheet__foot > .btn',
 ];
 
 /**

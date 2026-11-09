@@ -629,14 +629,27 @@ async function openLineup(match, opts = {}) {
   const totalGoals = (playerId) =>
     detail?.lineup.find((row) => row.player_id === playerId)?.goals ?? 0;
 
-  const askBlock = () => `<div class="askcut">
-      <b class="askcut__q">¿Hubo cambio de equipo?</b>
-      <p class="hint">El partido se divide en tramos. Se copian los equipos actuales como punto de partida y desde ahí rebalanceas a quien haga falta. Los goles de cada tramo cuentan para el equipo con el que se marcaron.</p>
+  const askBlock = () => {
+    const current = detail?.segmentCount || 1;
+    // El selector elige en cuántas partes queda el partido (máximo 9).
+    const choices = Array.from({ length: 8 }, (_, i) => i + 2).filter((n) => n > current);
+    const options = choices.map((n) => `<option value="${n}">${n}</option>`).join('');
+    return `<div class="askcut">
+      <b class="askcut__q">¿Se ha cambiado de equipo?</b>
+      <p class="hint">Divide el partido en partes con su propio marcador. Cada parte cuenta como un resultado (victoria, empate o derrota) para quien la jugó, pero la nota y el MVP son <b>uno solo</b> por partido. Se copian los equipos actuales como punto de partida.</p>
       <div class="askcut__row">
         <button class="btn btn--ghost btn--sm" type="button" data-ask="no">No hubo</button>
-        <button class="btn btn--acid btn--sm" type="button" data-ask="yes">Sí, dividir</button>
+        ${
+          choices.length
+            ? `<label class="askcut__parts"><span>Partes</span>
+                 <select class="input" data-parts>${options}</select>
+               </label>
+               <button class="btn btn--acid btn--sm" type="button" data-ask="yes">Dividir</button>`
+            : `<span class="meta">Ya tiene el máximo de 9 partes</span>`
+        }
       </div>
     </div>`;
+  };
 
   const render = () => {
     if (!detail) return;
@@ -690,7 +703,9 @@ async function openLineup(match, opts = {}) {
         ${askSplit ? '' : `<button class="iconbtn" type="button" data-split>${total > 1 ? '¿Hubo otro cambio?' : '¿Hubo cambio de equipo?'}</button>`}
         ${total > 1 && !askSplit ? '<button class="iconbtn iconbtn--danger" type="button" data-undo title="Deshacer el último cambio de equipo">Deshacer cambio</button>' : ''}
       </div>
-      <p class="hint">Elige equipo y goles de cada uno. Se guarda al instante, también con el partido cerrado.</p>
+      <p class="hint">Elige equipo y goles de cada uno. Se guarda al instante, también con el partido cerrado.${
+        total > 1 ? ' Cada tramo cuenta como un resultado para quien lo jugó; la nota y el MVP son del partido.' : ''
+      }</p>
       <ul class="lineupEdit">${rows}</ul>`;
   };
 
@@ -719,11 +734,19 @@ async function openLineup(match, opts = {}) {
         render();
         return;
       }
+      const target = Number(sheetBody.querySelector('[data-parts]')?.value) || 2;
       try {
-        const segment = await adminRpc('admin_split_match', { p_pw: pw, p_match: match.id });
+        let segment = detail?.segmentCount || 1;
+        while (segment < target) {
+          segment = await adminRpc('admin_split_match', { p_pw: pw, p_match: match.id });
+        }
         askSplit = false;
         await reload(segment);
-        toast('Partido dividido: rebalancea los equipos');
+        toast(
+          segment > 2
+            ? `Partido dividido en ${segment} partes: rebalancea los equipos`
+            : 'Partido dividido: rebalancea los equipos'
+        );
       } catch (e) {
         toast(errorMessage(e), 'error');
       }

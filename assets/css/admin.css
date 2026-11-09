@@ -552,5 +552,19 @@ button.more {
 .askcut__row {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
+}
+
+.askcut__parts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+.askcut__parts .input {
+  width: 84px;
+  padding: 0 30px 0 12px;
 }

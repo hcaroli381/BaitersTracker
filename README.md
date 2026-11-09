@@ -125,13 +125,17 @@ Los equipos y los goles se pueden poner **antes, durante y después** del partid
 cerrado.
 
 Si a mitad de partido los equipos están desequilibrados, en **Admin → Partidos → ¿Cambio de equipo?**
-(también dentro del editor de alineación) se responde que sí y el partido se divide en **tramos**:
+(también dentro del editor de alineación) se elige en **cuántas partes** se divide el partido:
 
-- Cada tramo tiene sus propios equipos y sus goles.
-- Se abre copiando los equipos actuales, para rebalancear solo a quien haga falta.
-- Los goles de cada tramo cuentan para el equipo con el que se marcaron, así que el marcador final sigue
+- Cada parte tiene sus propios equipos y sus goles; se abre copiando los equipos de la parte anterior,
+  para rebalancear solo a quien haga falta.
+- **Cada parte cuenta como un resultado distinto** (victoria, empate o derrota) para quien la jugó, así que
+  las victorias y derrotas del perfil y del ranking se cuentan por parte.
+- La **nota y el MVP son del partido**: se vota una sola vez por jugador y hay un único MVP, aunque el
+  partido tenga varias partes.
+- Los goles de cada parte cuentan para el equipo con el que se marcaron, así que el marcador final sigue
   cuadrando. Un jugador que cambió reparte sus goles al lado correcto.
-- El detalle enseña **Cambios de equipo**: quién jugaba en cada lado y cómo iba el marcador en cada tramo.
+- El detalle enseña **Cambios de equipo**: quién jugaba en cada lado y cómo iba el marcador en cada parte.
 - Se puede **deshacer el último tramo** si se marcó por error.
 
 ---
@@ -159,6 +163,7 @@ repetir):
 5. `supabase/migrations/20261105_05_unique_votes.sql`
 6. `supabase/migrations/20261105_06_self_number_realtime.sql`
 7. `supabase/migrations/20261106_07_device_hash_consistency.sql`
+8. `supabase/migrations/20261109_08_segment_results.sql`
 
 ---
 
@@ -174,8 +179,9 @@ npm test
 ```
 
 - `tests/rules.test.mjs` — reglas puras: ventana de votación, tramos, marcador por equipo y medias.
-- `tests/db.test.mjs` — SQL real: la hora de apertura, equipos antes/durante/después, tramos,
-  desempate del MVP, estadísticas sin doble conteo, permisos de admin y vistas cerradas a `anon`.
+- `tests/db.test.mjs` — SQL real: la hora de apertura, equipos antes/durante/después, tramos, resultado
+  por parte (una nota y un MVP por partido), desempate del MVP, estadísticas sin doble conteo,
+  permisos de admin y vistas cerradas a `anon`.
 - `tests/sql/base-schema.sql` — reconstrucción del esquema **solo para las pruebas** (no se aplica en
   Supabase).
 

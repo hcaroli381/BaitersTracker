@@ -264,10 +264,14 @@ export async function matchDetail(id) {
 }
 
 export async function playerHistory(playerId) {
-  const { data, error } = await sb()
-    .from('player_match')
-    .select('match_id, player_id, team, goals, status, gf, ga, avg_score, votes, teams, stints')
-    .eq('player_id', playerId);
+  const base = 'match_id, player_id, team, goals, status, gf, ga, avg_score, votes, teams, stints';
+  const withSegments = `${base}, wins, draws, losses, segment_results`;
+  let { data, error } = await sb().from('player_match').select(withSegments).eq('player_id', playerId);
+  // Antes de aplicar la migración 08 la vista aún no tiene estas columnas:
+  // el perfil sigue funcionando con lo que ya había.
+  if (error) {
+    ({ data, error } = await sb().from('player_match').select(base).eq('player_id', playerId));
+  }
   if (error) throw error;
 
   const dates = new Map(state.matches.map((m) => [m.id, m.played_on]));

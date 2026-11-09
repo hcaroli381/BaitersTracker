@@ -30,6 +30,7 @@ const MIGRATIONS = [
   'supabase/migrations/20261105_03_mvp_tiebreak.sql',
   'supabase/migrations/20261105_04_pick_rules.sql',
   'supabase/migrations/20261106_07_device_hash_consistency.sql',
+  'supabase/migrations/20261109_08_segment_results.sql',
 ];
 
 const ADMIN = 'admin';
@@ -307,7 +308,8 @@ test('tras el cambio cada jugador se reasigna a su nuevo equipo y el marcador cu
   assert.deepEqual(summary.rows[0], { goals_a: 2, goals_b: 3, segments: 2 });
 
   const ana = await db.query(
-    `select team, goals, gf, ga, teams, stints from public.player_match
+    `select team, goals, gf, ga, teams, stints, wins, draws, losses, segment_results
+       from public.player_match
       where match_id = $1 and player_id = $2`,
     [match, players.Ana]
   );
@@ -318,6 +320,19 @@ test('tras el cambio cada jugador se reasigna a su nuevo equipo y el marcador cu
   assert.equal(ana.rows[0].ga, null);
   assert.deepEqual(ana.rows[0].teams, ['A', 'B']);
   assert.equal(ana.rows[0].stints, 2);
+
+  // El resultado va por tramo: perdió el 1º con los Oscuros (1-2) y empató el
+  // 2º con los Claros (1-1, porque Diego también marcó para los Oscuros).
+  const anaSegs = typeof ana.rows[0].segment_results === 'string'
+    ? JSON.parse(ana.rows[0].segment_results)
+    : ana.rows[0].segment_results;
+  assert.deepEqual(anaSegs.map((r) => r.outcome), ['D', 'E']);
+  assert.deepEqual(anaSegs.map((r) => r.team), ['A', 'B']);
+  assert.deepEqual([anaSegs[0].gf, anaSegs[0].ga], [1, 2]);
+  assert.deepEqual([anaSegs[1].gf, anaSegs[1].ga], [1, 1]);
+  assert.equal(ana.rows[0].wins, 0);
+  assert.equal(ana.rows[0].draws, 1);
+  assert.equal(ana.rows[0].losses, 1);
 
   const bruno = await db.query(
     `select team, goals, gf, ga from public.player_match where match_id = $1 and player_id = $2`,
@@ -339,19 +354,62 @@ test('un partido con tramos cuenta como UN partido en las estadísticas', async 
   );
   assert.deepEqual(stats.rows[0], { played: 1, goals: 2, wins: 0, draws: 0, losses: 0 });
 
-  // Cerrado: nadie más ha jugado partidos, así que 0 victorias y 0 derrotas.
+  // Cerrado: cada tramo cuenta como un resultado. Ana perdió el 1º con los
+  // Oscuros (1-2) y ganó el 2º con los Claros (1-0): un partido, una victoria
+  // y una derrota. La nota y el MVP siguen siendo uno por partido.
   await db.query(`select public.admin_set_match_status($1,$2,'closed')`, [ADMIN, match]);
   const afterClose = await db.query(
     `select played, wins, draws, losses from public.player_stats where id = $1`,
     [players.Ana]
   );
-  assert.deepEqual(afterClose.rows[0], { played: 1, wins: 0, draws: 0, losses: 0 });
+  assert.deepEqual(afterClose.rows[0], { played: 1, wins: 1, draws: 0, losses: 1 });
 
   const bruno = await db.query(
     `select played, wins, losses from public.player_stats where id = $1`,
     [players.Bruno]
   );
-  assert.deepEqual(bruno.rows[0], { played: 1, wins: 0, losses: 1 }, '2-3 es derrota para el equipo A');
+  // Bruno siguió en los Oscuros los dos tramos: perdió los dos.
+  assert.deepEqual(bruno.rows[0], { played: 1, wins: 0, losses: 2 }, 'perdió los dos tramos con el equipo A');
+  await db.close();
+});
+
+test('cada tramo cuenta como resultado, pero la nota y el MVP son del partido', async () => {
+  const { db, match, players } = await splitScenario();
+  await db.query(`select public.admin_split_match($1,$2)`, [ADMIN, match]);
+  await db.query(`select public.admin_set_lineup($1,$2,$3,'B',2)`, [ADMIN, match, players.Ana]);
+  await db.query(`select public.admin_set_goals($1,$2,$3,1,2)`, [ADMIN, match, players.Ana]);
+
+  // Una sola nota por jugador y partido, aunque haya jugado dos tramos.
+  await db.query(`select public.cast_vote($1,$2,$3,9::smallint)`, ['tok-Bruno', match, players.Ana]);
+  const votes = await db.query(
+    `select count(*)::int as n from public.votes where match_id = $1 and target_id = $2`,
+    [match, players.Ana]
+  );
+  assert.equal(votes.rows[0].n, 1, 'solo hay una nota por partido');
+
+  await db.query(`select public.admin_set_match_status($1,$2,'closed')`, [ADMIN, match]);
+
+  const pm = await db.query(
+    `select wins, draws, losses, gf, ga, segment_results from public.player_match
+      where match_id = $1 and player_id = $2`,
+    [match, players.Ana]
+  );
+  assert.equal(pm.rows[0].wins, 1);
+  assert.equal(pm.rows[0].draws, 0);
+  assert.equal(pm.rows[0].losses, 1);
+  assert.equal(pm.rows[0].gf, null, 'sin resultado único en el partido');
+
+  const segs = typeof pm.rows[0].segment_results === 'string'
+    ? JSON.parse(pm.rows[0].segment_results)
+    : pm.rows[0].segment_results;
+  assert.deepEqual(segs.map((r) => r.outcome), ['D', 'V']);
+  assert.deepEqual(segs.map((r) => r.team), ['A', 'B']);
+
+  const mvps = await db.query(
+    `select count(*)::int as n from public.mvp_matches where match_id = $1`,
+    [match]
+  );
+  assert.equal(mvps.rows[0].n, 1, 'un solo MVP por partido');
   await db.close();
 });
 

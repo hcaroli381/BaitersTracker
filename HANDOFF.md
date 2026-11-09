@@ -3,7 +3,7 @@
 > Léelo entero antes de tocar nada. Recoge la dirección de arte acordada, las decisiones tomadas,
 > el estado real del backend y la lista de lo que falta.
 
-Última actualización: **5 de noviembre de 2026** · Entrega: **v1.7 (votos en directo, gestión de votos del admin y limpieza de fotos)**
+Última actualización: **9 de noviembre de 2026** · Entrega: **v1.8 (resultado por tramo y más movimiento en móvil)**
 
 ---
 
@@ -152,10 +152,13 @@ Proyecto: `sarbskubgajtftfthanl` (eu-west-3, Postgres 17, estado ACTIVE_HEALTHY)
 
 ### 4.2 Vistas
 
-- `player_stats` — partidos, victorias/empates/derrotas, goles, MVP, media y encajados por partido.
+- `player_stats` — `played` cuenta partidos distintos; `wins`/`draws`/`losses` suman los resultados de
+  cada tramo, así que un partido con cambios puede dar una victoria y una derrota al mismo jugador.
+  También goles, MVP (de `match_mvp`), media y encajados por tramo.
 - `player_match` — una fila por jugador y partido, con equipo, goles, `gf`/`ga`, media y nº de votos.
   Con cambios de equipo `team` es `AB`, `gf`/`ga` van a `null` (no hay un resultado único) y se añaden
-  `teams text[]` y `stints int`.
+  `teams text[]` y `stints int`. Desde la migración 08 añade `wins`/`draws`/`losses` (resultado de cada
+  tramo que jugó), `conceded` y `segment_results` (`jsonb` con `{segment, team, gf, ga, outcome}`).
 - `match_summary` — marcador agregado A/B por partido, `kickoff_at`, `votes_open_at` (= inicio + 1 h),
   `segments` (nº de tramos) y `votes_count`.
 - `mvp_matches` — ganador por media en partidos cerrados, ya con el desempate resuelto.
@@ -304,6 +307,25 @@ Siguiente paso natural: fotos y el primer partido.
      hay mayoría, el MVP sigue pendiente (`eligible` y `tie_votes` lo dicen en la vista).
    - La ficha enseña a los empatados, los votos y quién puede votar; el voto no se puede cambiar.
 
+### En esta sesión (9 de noviembre de 2026, v1.8)
+
+1. **Resultado por tramo**
+   - Cada tramo cuenta como un resultado (victoria, empate o derrota) para quien lo jugó. Un jugador que
+     cambió de equipo puede acabar el mismo partido con una victoria y una derrota.
+   - La nota y el MVP siguen siendo **uno solo por partido**: `votes` y `match_mvp` siguen siendo por
+     partido, no se duplican votos ni se crean MVPs por tramo.
+   - `player_match`/`player_stats` calculan esos resultados; el perfil enseña una insignia V/E/D por parte
+     y el detalle explica que el marcador global suma los tramos.
+   - Migración `20261109_08_segment_results.sql` (idempotente, después de la 07), aplicada en producción el
+     9/11/2026 con el conector de Supabase.
+2. **Admin: elegir en cuántas partes se divide**
+   - En **¿Se ha cambiado de equipo?** se elige el número total de partes (2–9) y se crean los tramos de
+     una vez; después se rebalancea cada uno como antes.
+3. **Movimiento en móvil**
+   - Dock animado al cambiar de pestaña, cifras del perfil con golpe, botones de la hoja en cascada,
+     entrada de pestañas y estadísticas, y pulsación en más filas y botones. Todo `transform`/`opacity`,
+     con `prefers-reduced-motion` respetado.
+
 ---
 
 ## 6. Cómo se usa (para el usuario)
@@ -430,7 +452,8 @@ update public.players set can_vote = false where name = 'Nombre';
 **Estado:** 01 → 03 aplicadas en producción el 5/11/2026. **04** y **05** aplicadas. **06** (realtime) está
 en el repo para activar el tiempo real; el cambio de dorsal propio se retiró de la interfaz y su RPC
 (`change_my_number`) sigue en la base sin que la llame nadie. **07** aplicada
-en producción el 6/11/2026: unifica la huella del móvil (ver §11). Las migraciones 01-03 se aplicaron a mano; la 05, la 06 y la 07 con el conector de Supabase.
+en producción el 6/11/2026: unifica la huella del móvil (ver §11). Las migraciones 01-03 se aplicaron a mano; la 05, la 06, la 07 y la **08** con el conector de Supabase.
+La **08** quedó aplicada en producción el 9/11/2026 (versión `20261109092920`).
 Comprobado después: una sola firma por función, `appearances` con clave `(match_id, player_id, segment)`
 y las cuatro vistas respondiendo. Al pasar la clave a tres columnas hubo que quitar las dos claves
 foráneas de `votes` hacia `appearances` (Postgres no deja cambiar la PK con ellas colgando); su
@@ -445,6 +468,7 @@ integridad la impone `cast_vote`, y se restauró la referencia de `votes` a `pla
   5. `20261105_05_unique_votes.sql` — restricción de voto único.
   6. `20261105_06_self_number_realtime.sql` — publicación realtime.
   7. `20261106_07_device_hash_consistency.sql` — la huella del móvil se resuelve igual en `me()` y en `claim_player` (md5 antiguo y sha256 nuevo). Sin ella, un móvil recién vinculado no se reconoce al recargar y su jugador ya no sale en «¿Quién eres?».
+  8. `20261109_08_segment_results.sql` — resultado por tramo: `wins`/`draws`/`losses`, `conceded` y `segment_results` en `player_match`, y `player_stats` los suma. Aplicada en producción el 9/11/2026 con el conector de Supabase; las vistas quedaron con `security_invoker = true` y sin `SELECT` para `anon`.
 - **La 02 depende de la 01** (usa `kickoff_at`) y **la 03 de la 02** (usa `appearances` y
   `player_match`). Si algo falla, el `begin … commit` deja todo como estaba.
 - Antes de aplicarlas en producción conviene revisar las firmas reales de las funciones en Supabase. Las

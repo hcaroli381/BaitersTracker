@@ -533,6 +533,7 @@ function cutsBlock(detail) {
           (seg) => `<li class="cut">
             <div class="cut__head">
               <span class="cut__n">${seg.segment === 1 ? 'Antes del cambio' : `Tramo ${seg.segment}`}</span>
+              <span class="cut__out">${esc(outcomeText(seg.goals.a, seg.goals.b))}</span>
               <span class="cut__score">${seg.goals.a}<i aria-hidden="true"></i>${seg.goals.b}</span>
             </div>
             <p class="cut__row"><b>${esc(teamName('A'))}</b> ${names(seg.A)}</p>
@@ -540,7 +541,8 @@ function cutsBlock(detail) {
           </li>`
         )
         .join('')}
-    </ol>`;
+    </ol>
+    <p class="hint">Cada tramo cuenta como un resultado para quien lo jugó. La nota y el MVP son del partido.</p>`;
 }
 
 export async function matchView(id) {
@@ -617,6 +619,11 @@ export async function matchView(id) {
              ${teamBlock('A', lineup.filter((l) => l.startTeam === 'A'), summary.goals_a, detail)}
              ${teamBlock('B', lineup.filter((l) => l.startTeam === 'B'), summary.goals_b, detail)}
            </div>
+           ${
+             detail.segmentCount > 1
+               ? '<p class="hint">El marcador suma todos los tramos; cada tramo cuenta como un resultado distinto para quien lo jugó.</p>'
+               : ''
+           }
            ${cutsBlock(detail)}`
         : empty('Sin alineación', 'El admin todavía no ha publicado quién juega este partido.')
     }
@@ -788,6 +795,10 @@ export async function playerView(id) {
   const s = p.stats || {};
   const history = await playerHistory(p.id);
   const rated = history.filter((h) => h.avg_score != null).slice(0, 10).reverse();
+  // Con cambios de equipo, cada tramo cuenta como un resultado distinto.
+  const splitHistory = history.some(
+    (h) => Array.isArray(h.segment_results) && h.segment_results.length > 1
+  );
 
   const stat = (value, label) => `<div class="stat"><span class="stat__v">${value}</span><span class="stat__l">${esc(label)}</span></div>`;
 
@@ -814,6 +825,12 @@ export async function playerView(id) {
       ${stat(s.conceded_pm == null ? '–' : Number(s.conceded_pm).toFixed(2).replace('.', ','), 'Encajados por partido')}
     </div>
 
+    ${
+      splitHistory
+        ? '<p class="hint">Con cambios de equipo, cada parte cuenta como un resultado (victoria, empate o derrota); la nota y el MVP son del partido.</p>'
+        : ''
+    }
+
     ${section('Evolución de la nota')}
     ${
       rated.length >= 2
@@ -831,14 +848,37 @@ export async function playerView(id) {
             ${history
               .slice(0, 12)
               .map((h) => {
-                const gf = h.gf ?? 0;
-                const ga = h.ga ?? 0;
-                const outcome = gf > ga ? 'V' : gf === ga ? 'E' : 'D';
+                const parts =
+                  Array.isArray(h.segment_results) && h.segment_results.length
+                    ? h.segment_results
+                    : [{ segment: 1, team: h.team, gf: h.gf ?? 0, ga: h.ga ?? 0 }];
+                const outcomeOf = (r) => (r.gf > r.ga ? 'V' : r.gf === r.ga ? 'E' : 'D');
+                const outcomeLabel = { V: 'Victoria', E: 'Empate', D: 'Derrota' };
+                const badges = parts
+                  .map((r) => {
+                    const o = outcomeOf(r);
+                    return `<span class="hrow__res hrow__res--${o.toLowerCase()}" aria-label="${outcomeLabel[o]}">${o}</span>`;
+                  })
+                  .join('');
+                const score =
+                  parts.length > 1
+                    ? `<b class="hrow__score hrow__score--parts">${parts
+                        .map(
+                          (r) => `<span class="hrow__part">${num(r.gf, 0)}<i aria-hidden="true"></i>${num(r.ga, 0)}</span>`
+                        )
+                        .join('<em aria-hidden="true">·</em>')}</b>`
+                    : `<b class="hrow__score">${num(parts[0].gf, 0)}<i aria-hidden="true"></i>${num(parts[0].ga, 0)}</b>`;
+                const sub =
+                  parts.length > 1
+                    ? `${esc(shortDate(h.played_on))}, ${parts
+                        .map((r) => `${r.segment}º ${teamName(r.team)}`)
+                        .join(' · ')}, ${esc(plural(h.goals ?? 0, 'gol', 'goles'))}`
+                    : `${esc(shortDate(h.played_on))}, con los ${esc(teamName(parts[0].team))}, ${esc(plural(h.goals ?? 0, 'gol', 'goles'))}`;
                 return `<li><a class="hrow" href="${href('partidos', h.match_id)}">
-                  <span class="hrow__res hrow__res--${outcome.toLowerCase()}" aria-label="${outcome === 'V' ? 'Victoria' : outcome === 'E' ? 'Empate' : 'Derrota'}">${outcome}</span>
+                  <span class="hrow__resbox${parts.length > 1 ? ' hrow__resbox--multi' : ''}">${badges}</span>
                   <span class="hrow__main">
-                    <b class="hrow__score">${num(gf, 0)}<i aria-hidden="true"></i>${num(ga, 0)}</b>
-                    <span class="hrow__sub">${esc(shortDate(h.played_on))}, con los ${esc(teamName(h.team))}, ${esc(plural(h.goals ?? 0, 'gol', 'goles'))}</span>
+                    ${score}
+                    <span class="hrow__sub">${sub}</span>
                   </span>
                   ${rateBadge(h.avg_score)}
                 </a></li>`;

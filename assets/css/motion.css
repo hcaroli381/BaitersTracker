@@ -80,6 +80,17 @@
   }
 }
 
+@keyframes bt-dock {
+  0% {
+    opacity: 0.6;
+    transform: translate3d(0, 5px, 0) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* ---------------------------------------------------------------- */
 /* Entrada en cascada                                                */
 /* `--i` lo pone `stagger()` en core.js (0–7).                       */
@@ -96,7 +107,11 @@
 .adminlist > .adminrow,
 .voters > .voters__row,
 .lineupEdit > .lineupEdit__row,
-.scale > .scale__btn {
+.scale > .scale__btn,
+.seg > .seg__btn,
+.stats > .stat,
+.hrow__resbox > .hrow__res,
+.cut__head > .cut__out {
   animation: bt-rise 0.44s var(--ease-out) backwards;
   animation-delay: calc(var(--i, 0) * var(--stagger));
 }
@@ -150,6 +165,21 @@
   animation-delay: calc(var(--i, 0) * 30ms);
 }
 
+/* Líder de la tabla y marcador de cada tramo */
+.champ {
+  animation: bt-pop 0.44s var(--ease-spring) backwards;
+}
+
+.cut__score {
+  animation: bt-pop 0.34s var(--ease-spring) backwards;
+  animation-delay: 0.08s;
+}
+
+/* Puntos del gráfico de evolución */
+.chart__dot {
+  animation: bt-pop 0.3s var(--ease-spring) backwards;
+}
+
 /* ---------------------------------------------------------------- */
 /* Progreso de votos                                                 */
 /* ---------------------------------------------------------------- */
@@ -198,8 +228,18 @@
 .scard,
 .cut,
 .attendance,
-.dock__item {
+.dock__item,
+.champ,
+.adminrow,
+.stat,
+.voters__row,
+.lineupEdit__row {
   transition: transform 0.14s var(--ease-out);
+}
+
+.iconbtn {
+  transition: transform 0.14s var(--ease-out), background 0.14s var(--ease), color 0.14s var(--ease),
+    border-color 0.14s var(--ease);
 }
 
 .prow:active,
@@ -208,7 +248,12 @@
 .hrow:active,
 .scard:active,
 .cut:active,
-.dock__item:active {
+.dock__item:active,
+.champ:active,
+.adminrow:active,
+.stat:active,
+.voters__row:active,
+.lineupEdit__row:active {
   transform: scale(0.985);
 }
 
@@ -221,7 +266,9 @@
 .rate:active,
 .pill:active,
 .seg__btn:active,
-.iconbtn:active {
+.iconbtn:active,
+.btn:active,
+.switch:active {
   transform: scale(0.94);
 }
 
@@ -236,6 +283,35 @@
 
   .sheet__x:hover:not(:active) {
     transform: scale(1.06);
+  }
+
+  .champ:hover:not(:active),
+  .adminrow:hover:not(:active),
+  .stat:hover:not(:active) {
+    transform: translateY(-1px);
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* Móvil: más vida sin más peso                                      */
+/* ---------------------------------------------------------------- */
+
+@media (max-width: 899px) {
+  /* El dock respira al cambiar de pestaña */
+  .dock__item.is-on {
+    animation: bt-dock 0.36s var(--ease-spring) backwards;
+  }
+
+  /* Las cifras del perfil entran con un golpe */
+  .stats > .stat .stat__v {
+    animation: bt-pop 0.44s var(--ease-spring) backwards;
+    animation-delay: calc(var(--i, 0) * 30ms);
+  }
+
+  /* Los botones de la hoja entran en cascada */
+  .sheet__foot .btn {
+    animation: bt-rise 0.34s var(--ease-out) backwards;
+    animation-delay: calc(var(--i, 0) * 26ms);
   }
 }
 
