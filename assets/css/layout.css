@@ -366,6 +366,7 @@
 
 .pick--num .pick__bar {
   position: static;
+  flex-wrap: wrap;
   margin: 8px 0 0;
   padding: 0;
   border: 0;
@@ -373,6 +374,7 @@
 }
 
 .pick--num .pick__bar .btn {
+  flex: 1 1 calc(50% - 5px);
   white-space: nowrap;
   padding: 0 14px;
   font-size: 15px;

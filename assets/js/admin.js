@@ -824,14 +824,7 @@ async function openLineup(match, opts = {}) {
 function settingsTab() {
   return `<div class="adminform">
       <h2 class="subhead">Elección de jugador</h2>
-      <div class="switchrow">
-        <div>
-          <b>Un jugador, un móvil</b>
-          <p class="hint">Si está activo, cuando alguien coge un jugador deja de aparecer en la lista y nadie más puede cogerlo. El admin lo libera con «Liberar».</p>
-        </div>
-        <button class="switch ${state.claimLocked !== false ? 'is-on' : ''}" type="button" id="lockClaimed"
-          role="switch" aria-checked="${state.claimLocked !== false ? 'true' : 'false'}"><span></span></button>
-      </div>
+      <p class="hint">Todos los jugadores salen siempre en «¿Quién eres?» con su dorsal. Si alguien elige a uno que ya estaba en otro móvil, el vínculo se mueve y el anterior queda fuera.</p>
       <div class="switchrow">
         <div>
           <b>Los comodines aparecen para elegir</b>
@@ -840,7 +833,7 @@ function settingsTab() {
         <button class="switch ${state.wildcardsPickable ? 'is-on' : ''}" type="button" id="wildcardsPickable"
           role="switch" aria-checked="${state.wildcardsPickable ? 'true' : 'false'}"><span></span></button>
       </div>
-      <p class="hint">Si no queda ningún jugador libre, la web entra directamente sin preguntar.</p>
+      <p class="hint">Si la plantilla está vacía, la web entra directamente sin preguntar.</p>
     </div>
 
     <div class="adminform">
@@ -872,20 +865,6 @@ function settingsTab() {
 }
 
 function mountSettings(root) {
-  root.querySelector('#lockClaimed')?.addEventListener('click', async (ev) => {
-    const btn = ev.currentTarget;
-    const next = !(state.claimLocked !== false);
-    try {
-      await adminRpc('admin_set_lock_claimed', { p_pw: adminPassword(), p_value: next });
-      state.claimLocked = next;
-      btn.classList.toggle('is-on', next);
-      btn.setAttribute('aria-checked', String(next));
-      toast(next ? 'Un jugador solo se puede coger una vez' : 'Un jugador se puede volver a coger');
-    } catch (e) {
-      toast(errorMessage(e), 'error');
-    }
-  });
-
   root.querySelector('#wildcardsPickable')?.addEventListener('click', async (ev) => {
     const btn = ev.currentTarget;
     const next = !(state.wildcardsPickable === true);

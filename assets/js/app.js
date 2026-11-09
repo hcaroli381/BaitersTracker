@@ -96,16 +96,12 @@ function renderLogin() {
 /* ------------------------------------------------------------------ */
 
 /**
- * Jugadores que salen en «¿Quién eres?»: los libres, y los comodines solo si el
- * admin lo permite. Con el bloqueo activo, quien ya está cogido no aparece.
+ * Jugadores que salen en «¿Quién eres?»: todos los activos, estén o no
+ * vinculados a un móvil. Los comodines solo si el admin lo permite.
  */
 function pickCandidates() {
-  const lock = state.claimLocked !== false;
   return state.players.filter(
-    (p) =>
-      p.active !== false &&
-      (p.can_vote !== false || state.wildcardsPickable === true) &&
-      (!lock || !p.device_hash)
+    (p) => p.active !== false && (p.can_vote !== false || state.wildcardsPickable === true)
   );
 }
 
@@ -118,7 +114,8 @@ function renderPick() {
     <header class="pick__head">
       ${WORDMARK}
       <h1 class="title">¿Quién eres?</h1>
-      <p class="lede">Toca tu nombre y elige dorsal. Este móvil quedará vinculado a ti para votar; si te equivocas, el admin puede liberarlo.</p>
+      <p class="lede">Toca tu nombre. Si ya tenías dorsal se conserva; si no, lo eliges ahora. Este móvil quedará vinculado a ti para votar.</p>
+      <p class="hint">Si ese jugador ya estaba en otro móvil, se cerrará allí.</p>
       ${
         wildcards && state.wildcardsPickable !== true
           ? `<p class="hint">${wildcards === 1 ? 'Hay un comodín' : `Hay ${wildcards} comodines`} en la plantilla: juegan cuando falta gente, no votan y no salen en esta lista.</p>`
@@ -133,19 +130,15 @@ function renderPick() {
                 (p) => `<button class="scard" type="button" data-pick="${esc(p.id)}">
                   <span class="scard__photo">${photoBlock(p)}${p.shirt_number ? `<span class="scard__num">${pad2(p.shirt_number)}</span>` : ''}</span>
                   <b class="scard__name">${esc(p.name)}</b>
-                  <span class="scard__stat">${p.device_hash ? 'Cogido · se puede cambiar' : 'Libre'}</span>
+                  <span class="scard__stat">${p.shirt_number ? `Dorsal ${pad2(p.shirt_number)}` : 'Sin dorsal'}</span>
                 </button>`
               )
               .join('')}
           </div>`
-        : `<p class="hint">${
-            state.players.some((p) => p.active !== false && p.device_hash)
-              ? 'Todos los jugadores ya están cogidos. Pide al admin que libere el tuyo.'
-              : 'No hay jugadores todavía. Pide al admin que los añada.'
-          }</p>`
+        : `<p class="hint">No hay jugadores todavía. Pide al admin que los añada.</p>`
     }
     <footer class="pick__foot">
-      <button class="btn btn--ghost" type="button" id="pickSkip">Solo ver y administrar</button>
+      <button class="btn btn--ghost" type="button" id="pickSkip">Continuar como invitado</button>
       <button class="btn btn--ghost" type="button" id="pickOut">Salir</button>
     </footer>
   </div>`;
@@ -176,10 +169,17 @@ function renderPick() {
 
 function renderNumberStep(player, { forced = false } = {}) {
   window.scrollTo(0, 0);
+  const existing = player.shirt_number ? Number(player.shirt_number) : null;
   const taken = takenNumbers(player.id);
   const takenList = [...taken].sort((a, b) => a - b).map((n) => pad2(n)).join(', ');
+  // Si ya tenía dorsal (por ejemplo, el admin acaba de liberar su móvil), no se le
+  // obliga a elegirlo otra vez: confirma el de siempre con un toque.
+  let editing = !existing;
 
-  app.innerHTML = `<div class="pick pick--num">
+  const paint = () => {
+    const confirming = Boolean(existing) && !editing;
+
+    app.innerHTML = `<div class="pick pick--num">
     <header class="pick__head">
       ${WORDMARK}
       <h1 class="title">Tu dorsal</h1>
@@ -187,75 +187,129 @@ function renderNumberStep(player, { forced = false } = {}) {
         ${avatar(player, 52)}
         <span class="pickstep__txt">
           <b>${esc(player.name)}</b>
-          <span class="hint">Escribe un número del 1 al 99. Quedará a tu nombre.</span>
+          <span class="hint">${
+            confirming
+              ? `Ya tenías el ${pad2(existing)}. Se queda como está.`
+              : 'Escribe un número del 1 al 99. Quedará a tu nombre.'
+          }</span>
         </span>
       </div>
     </header>
-    <form id="numForm" class="numform" novalidate>
-      <label class="field">
-        <span class="field__label">Dorsal</span>
-        <input class="input input--num" id="numInput" name="num" type="text" inputmode="numeric"
-          autocomplete="off" maxlength="2" placeholder="00">
-      </label>
-      <p class="formerr" id="numErr" hidden></p>
-      <p class="hint">${takenList ? `Ya están cogidos: ${esc(takenList)}` : 'Todos los dorsales están libres.'}</p>
-      <div class="pick__bar">
-        ${forced ? '' : '<button class="btn btn--ghost" type="button" id="numBack">Cambiar jugador</button>'}
-        <button class="btn btn--acid" type="submit" id="numGo">Confirmar dorsal</button>
-      </div>
-    </form>
+    ${
+      confirming
+        ? `<div class="numform">
+            <p class="hint">Este móvil será el que entre como ${esc(player.name)}. Si lo tenías en otro, se cerrará allí.</p>
+            <p class="formerr" id="numErr" hidden></p>
+            <div class="pick__bar">
+              ${forced ? '' : '<button class="btn btn--ghost" type="button" id="numBack">Cambiar jugador</button>'}
+              <button class="btn btn--ghost" type="button" id="numOther">Cambiar dorsal</button>
+              <button class="btn btn--acid" type="button" id="numKeep">Entrar con el ${pad2(existing)}</button>
+            </div>
+          </div>`
+        : `<form id="numForm" class="numform" novalidate>
+            <label class="field">
+              <span class="field__label">Dorsal</span>
+              <input class="input input--num" id="numInput" name="num" type="text" inputmode="numeric"
+                autocomplete="off" maxlength="2" placeholder="00" value="${existing ? pad2(existing) : ''}">
+            </label>
+            <p class="formerr" id="numErr" hidden></p>
+            <p class="hint">${takenList ? `Ya están cogidos: ${esc(takenList)}` : 'Todos los dorsales están libres.'}</p>
+            ${existing ? `<p class="hint">Si no quieres cambiarlo, el ${pad2(existing)} sigue siendo tuyo.</p>` : ''}
+            <div class="pick__bar">
+              ${forced ? '' : '<button class="btn btn--ghost" type="button" id="numBack">Cambiar jugador</button>'}
+              ${existing ? `<button class="btn btn--ghost" type="button" id="numCancel">Usar el ${pad2(existing)}</button>` : ''}
+              <button class="btn btn--acid" type="submit" id="numGo">Confirmar dorsal</button>
+            </div>
+          </form>`
+    }
   </div>`;
 
-  const form = app.querySelector('#numForm');
-  const input = app.querySelector('#numInput');
-  const err = app.querySelector('#numErr');
-  const go = app.querySelector('#numGo');
-  const back = app.querySelector('#numBack');
+    const err = app.querySelector('#numErr');
+    const back = app.querySelector('#numBack');
 
-  input.addEventListener('input', () => {
-    input.value = input.value.replace(/\D/g, '').slice(0, 2);
-    err.hidden = true;
-  });
-
-  back?.addEventListener('click', () => renderPick());
-
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    const raw = input.value.trim();
-    const n = Number(raw);
-    const fail = (msg) => {
-      err.hidden = false;
-      err.textContent = msg;
-      input.focus();
+    const doLink = async (number, btn, extra = []) => {
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Guardando…';
+      }
+      extra.forEach((b) => b && (b.disabled = true));
+      try {
+        await claimPlayer(player.id, number);
+      } catch (e) {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = number == null ? `Entrar con el ${pad2(existing)}` : 'Confirmar dorsal';
+        }
+        extra.forEach((b) => b && (b.disabled = false));
+        await loadCore().catch(() => {});
+        err.hidden = false;
+        err.textContent = errorMessage(e);
+        return;
+      }
+      localStorage.removeItem(NO_PLAYER);
+      try {
+        await loadCore();
+      } catch {
+        /* el shell vuelve a cargar al entrar */
+      }
+      state.me = player.id;
+      toast(
+        number == null && existing
+          ? `Sigue siendo el ${pad2(existing)}. Ya puedes votar.`
+          : `El ${pad2(number)} es tu dorsal. Ya puedes votar.`
+      );
+      shellReady = false;
+      renderShell();
     };
-    if (!/^\d{1,2}$/.test(raw) || n < 1 || n > 99) return fail('Escribe un número entre 1 y 99.');
-    if (taken.has(n)) return fail(`El ${pad2(n)} ya lo tiene otro. Elige otro.`);
 
-    go.disabled = true;
-    if (back) back.disabled = true;
-    go.textContent = 'Guardando…';
-    try {
-      await claimPlayer(player.id, n);
-    } catch (e) {
-      go.disabled = false;
-      if (back) back.disabled = false;
-      go.textContent = 'Confirmar dorsal';
-      await loadCore().catch(() => {});
-      return fail(errorMessage(e));
-    }
-    localStorage.removeItem(NO_PLAYER);
-    try {
-      await loadCore();
-    } catch {
-      /* el shell vuelve a cargar al entrar */
-    }
-    state.me = player.id;
-    toast(`El ${pad2(n)} es tu dorsal. Ya puedes votar.`);
-    shellReady = false;
-    renderShell();
-  });
+    back?.addEventListener('click', () => renderPick());
 
-  input.focus({ preventScroll: true });
+    if (confirming) {
+      const keep = app.querySelector('#numKeep');
+      const other = app.querySelector('#numOther');
+      keep.addEventListener('click', () => doLink(null, keep, [other, back]));
+      other.addEventListener('click', () => {
+        editing = true;
+        paint();
+      });
+      keep.focus({ preventScroll: true });
+      return;
+    }
+
+    const form = app.querySelector('#numForm');
+    const input = app.querySelector('#numInput');
+    const go = app.querySelector('#numGo');
+    const cancel = app.querySelector('#numCancel');
+
+    input.addEventListener('input', () => {
+      input.value = input.value.replace(/\D/g, '').slice(0, 2);
+      err.hidden = true;
+    });
+
+    cancel?.addEventListener('click', () => {
+      editing = false;
+      paint();
+    });
+
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const raw = input.value.trim();
+      const n = Number(raw);
+      const fail = (msg) => {
+        err.hidden = false;
+        err.textContent = msg;
+        input.focus();
+      };
+      if (!/^\d{1,2}$/.test(raw) || n < 1 || n > 99) return fail('Escribe un número entre 1 y 99.');
+      if (taken.has(n)) return fail(`El ${pad2(n)} ya lo tiene otro. Elige otro.`);
+      await doLink(n, go, [back, cancel]);
+    });
+
+    input.focus({ preventScroll: true });
+    if (existing) input.select();
+  };
+
+  paint();
 }
 
 /* ------------------------------------------------------------------ */
@@ -283,6 +337,8 @@ async function start() {
     state.me = null;
   }
 
+  watchIdentity();
+
   // Enlace directo de vinculación: #/vincular/<id>. Se limpia la dirección para que no quede
   // en la barra ni llegue a la navegación normal.
   const link = parseRoute();
@@ -292,8 +348,9 @@ async function start() {
     history.replaceState(null, '', location.pathname + location.search);
   }
 
-  if (!state.me && linkedPlayer && linkedPlayer.active !== false && !linkedPlayer.device_hash) {
-    // Enlace de vinculación: sin salida a la lista ni a «Solo ver», hasta que confirme su dorsal.
+  if (!state.me && linkedPlayer && linkedPlayer.active !== false) {
+    // Enlace de vinculación: sin salida a la lista ni a «Continuar como invitado», hasta que confirme su dorsal.
+    // Vale también si ya estaba en otro móvil: el vínculo se mueve a este.
     return renderNumberStep(linkedPlayer, { forced: true });
   }
 
@@ -302,7 +359,7 @@ async function start() {
       renderShell();
       return;
     }
-    // Sin nadie a quien elegir (plantilla vacía o todos cogidos) se entra directo.
+    // Sin jugadores en la plantilla se entra directo.
     if (!pickCandidates().length) {
       renderShell();
       return;
@@ -312,6 +369,44 @@ async function start() {
 
   renderShell();
   startLive();
+}
+
+/**
+ * Cuando el jugador se vincula desde otro móvil, este deja de ser él. Se
+ * comprueba al volver a la app: me() deja de devolverlo en cuanto el otro
+ * móvil reclama el jugador, y aquí se vuelve a pedir que elija.
+ */
+let watchingIdentity = false;
+function watchIdentity() {
+  if (watchingIdentity) return;
+  watchingIdentity = true;
+  let checking = false;
+
+  const check = async () => {
+    if (checking || !state.me || document.visibilityState === 'hidden') return;
+    checking = true;
+    let me;
+    try {
+      me = await whoAmI();
+    } catch {
+      return; // sin red no se echa a nadie
+    } finally {
+      checking = false;
+    }
+    if (me === state.me) return;
+
+    state.me = null;
+    localStorage.removeItem(NO_PLAYER);
+    shellReady = false;
+    toast('Este móvil ya no entra como ese jugador. Elige de nuevo.', 'error');
+    if (pickCandidates().length) renderPick();
+    else renderShell();
+  };
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') check();
+  });
+  window.addEventListener('focus', check);
 }
 
 /**
@@ -333,7 +428,7 @@ async function refreshRoute() {
 
 function meChip() {
   if (!state.me) {
-    return `<button class="bar__me bar__me--none" type="button" data-claim>Vincular este móvil</button>`;
+    return `<button class="bar__me bar__me--none" type="button" data-claim>Iniciar sesión</button>`;
   }
   const me = playerById(state.me);
   if (!me) return '';

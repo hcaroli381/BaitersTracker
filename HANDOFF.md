@@ -108,8 +108,9 @@ Reglas de color:
 - **La contraseña del grupo no está en el repositorio.** Se gestiona en Supabase → Authentication → Users.
 - **La contraseña de admin tampoco.** Se introduce en la pestaña **05 · Admin** de la app y se guarda en
   `sessionStorage` (solo esa pestaña). Si se pierde, se resetea por SQL (ver §9).
-- El token de dispositivo hace que cada móvil vote siempre como el mismo jugador. `claim_player` lo
-  vincula una sola vez; el admin puede liberarlo con `admin_release_player`.
+- El token de dispositivo hace que cada móvil vote siempre como el mismo jugador. `claim_player` mueve el
+  vínculo al último móvil que elige: todos salen siempre en la lista y el móvil anterior deja de entrar
+  como él (se le pide elegir de nuevo al volver). `admin_release_player` lo suelta sin cogerlo.
 - **Dorsales:** los elige cada jugador en su primer acceso (paso 2, tras elegir su nombre). El dorsal queda
   reservado por la restricción `unique` de `shirt_number`; el admin solo lo corrige desde el panel.
 - La sesión de Supabase se persiste en el navegador: no se pide contraseña en cada visita.
@@ -326,6 +327,13 @@ Siguiente paso natural: fotos y el primer partido.
      entrada de pestañas y estadísticas, y pulsación en más filas y botones. Todo `transform`/`opacity`,
      con `prefers-reduced-motion` respetado.
 
+### En esta sesión (9 de noviembre de 2026, v1.9)
+
+- **Todos eligen, el último móvil gana.** «¿Quién eres?» muestra siempre a todos los activos con su
+  dorsal; ya no hay estado «cogido» ni interruptor en Admin. `claim_player` mueve el vínculo al último
+  móvil y suelta el anterior; el móvil viejo deja de entrar como ese jugador al volver a la app.
+  Migración `20261109_09_free_claim.sql` (idempotente, después de la 08).
+
 ---
 
 ## 6. Cómo se usa (para el usuario)
@@ -433,7 +441,9 @@ update public.players set can_vote = false where name = 'Nombre';
 - Antes de tocar estilos, leer §2 y respetar el uso del ácido y las hairlines.
 - Cualquier acción de escritura va por RPC. No añadir políticas de escritura a las tablas.
 - Las fotos viven en Storage; el histórico solo guarda la ruta (`avatar_path`).
-- El dorsal y el jugador se eligen una vez por dispositivo; el panel solo corrige excepciones.
+- El dorsal y el jugador se eligen una vez por dispositivo; el panel solo corrige excepciones. Si el admin
+  libera el móvil, el dorsal se conserva: el jugador solo lo confirma al volver a entrar (y puede cambiarlo
+  desde esa pantalla).
 - **No reintroducir un modo demo**: si hace falta revisar el diseño sin datos, se levanta en local con la
   base de pruebas, no se añade un botón en producción.
 - **La regla de los comodines va en la base**: cualquier función nueva que cuente votos o votantes debe
@@ -453,7 +463,8 @@ update public.players set can_vote = false where name = 'Nombre';
 en el repo para activar el tiempo real; el cambio de dorsal propio se retiró de la interfaz y su RPC
 (`change_my_number`) sigue en la base sin que la llame nadie. **07** aplicada
 en producción el 6/11/2026: unifica la huella del móvil (ver §11). Las migraciones 01-03 se aplicaron a mano; la 05, la 06, la 07 y la **08** con el conector de Supabase.
-La **08** quedó aplicada en producción el 9/11/2026 (versión `20261109092920`).
+La **08** quedó aplicada en producción el 9/11/2026 (versión `20261109092920`). La **09** está en el
+repo pendiente de aplicar: mueve el vínculo al último móvil y deja `lock_claimed` en `false`.
 Comprobado después: una sola firma por función, `appearances` con clave `(match_id, player_id, segment)`
 y las cuatro vistas respondiendo. Al pasar la clave a tres columnas hubo que quitar las dos claves
 foráneas de `votes` hacia `appearances` (Postgres no deja cambiar la PK con ellas colgando); su
@@ -469,6 +480,7 @@ integridad la impone `cast_vote`, y se restauró la referencia de `votes` a `pla
   6. `20261105_06_self_number_realtime.sql` — publicación realtime.
   7. `20261106_07_device_hash_consistency.sql` — la huella del móvil se resuelve igual en `me()` y en `claim_player` (md5 antiguo y sha256 nuevo). Sin ella, un móvil recién vinculado no se reconoce al recargar y su jugador ya no sale en «¿Quién eres?».
   8. `20261109_08_segment_results.sql` — resultado por tramo: `wins`/`draws`/`losses`, `conceded` y `segment_results` en `player_match`, y `player_stats` los suma. Aplicada en producción el 9/11/2026 con el conector de Supabase; las vistas quedaron con `security_invoker = true` y sin `SELECT` para `anon`.
+  9. `20261109_09_free_claim.sql` — todos los jugadores salen siempre; `claim_player` mueve el vínculo al último móvil y suelta al anterior. Deja `lock_claimed` en `false` por compatibilidad. Pendiente de aplicar en producción.
 - **La 02 depende de la 01** (usa `kickoff_at`) y **la 03 de la 02** (usa `appearances` y
   `player_match`). Si algo falla, el `begin … commit` deja todo como estaba.
 - Antes de aplicarlas en producción conviene revisar las firmas reales de las funciones en Supabase. Las

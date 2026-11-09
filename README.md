@@ -61,9 +61,9 @@ Dirección de arte: **Dark Editorial** — carbón, blanco roto y verde ácido, 
 - **Admin** — jugadores (alta por nombre, renombrar, activar, liberar móvil, corregir dorsal, borrar),
   fotografías, partidos (crear, fecha, estado, alineación con equipos y goles, y **votos**: ver, cambiar
   o quitar) y ajustes (autovoto, contraseña de admin).
-- **Enlace de vinculación** — `#/vincular/<id>` abre directamente la pantalla de dorsal de ese jugador si su
-  móvil aún no está vinculado. Se obtiene el id en Supabase (tabla `players`). Quien tenga el enlace puede
-  vincularse con ese jugador, así que envíalo solo a su dueño.
+- **Enlace de vinculación** — `#/vincular/<id>` abre directamente la pantalla de dorsal de ese jugador, esté o no
+  vinculado a otro móvil (si ya lo estaba, el vínculo se mueve a quien abra el enlace). Se obtiene el id en
+  Supabase (tabla `players`). Quien tenga el enlace puede entrar como ese jugador, así que envíalo solo a su dueño.
 - **En directo** — los votos, desempates y alineaciones de los demás aparecen sin recargar.
 
 ---
@@ -73,11 +73,19 @@ Dirección de arte: **Dark Editorial** — carbón, blanco roto y verde ácido, 
 El admin añade **solo los nombres**. Cada jugador, la primera vez que entra, elige su nombre y luego su
 número en una rejilla de 1 a 99 con los ya ocupados tachados. El dorsal queda reservado por una restricción
 `unique` en la base, así que dos personas no pueden acabar con el mismo. Si alguien se equivoca, el admin
-lo corrige con el botón `#` del panel (o lo libera y repite la elección).
+lo corrige con el botón `#` del panel (o lo libera y el jugador vuelve a entrar confirmando su dorsal).
 
-Un jugador cogido desaparece de la lista de «¿Quién eres?» y no se puede volver a coger desde otro móvil,
-y los comodines tampoco salen; las dos reglas se activan o desactivan en **Admin → Ajustes**. Si no queda ningún jugador
-libre (plantilla vacía o todos cogidos), la web entra directamente sin preguntar.
+En «¿Quién eres?» salen **todos** los jugadores activos con su dorsal, estén o no vinculados a un móvil. Al tocar
+tu nombre, este móvil queda vinculado a ti para votar; si ya tenías dorsal se conserva y, si no, lo eliges.
+Si alguien elige a un jugador que ya estaba en otro móvil, el vínculo se mueve: el móvil anterior deja de entrar
+como él y, al volver a la app, se le pide elegir de nuevo. Un móvil solo entra como un jugador.
+
+Los comodines no salen en la lista salvo que el admin lo active en **Admin → Ajustes**. Si la plantilla está
+vacía, la web entra directamente sin preguntar.
+
+Si el admin **libera** a alguien (por ejemplo, para dejar de entrar en su nombre sin que nadie lo coja), su dorsal
+sigue siendo suyo: al volver a entrar solo tiene que confirmarlo con un toque. Si quiere cambiarlo, tiene
+**Cambiar dorsal** en esa misma pantalla.
 
 ---
 
@@ -164,6 +172,7 @@ repetir):
 6. `supabase/migrations/20261105_06_self_number_realtime.sql`
 7. `supabase/migrations/20261106_07_device_hash_consistency.sql`
 8. `supabase/migrations/20261109_08_segment_results.sql`
+9. `supabase/migrations/20261109_09_free_claim.sql`
 
 ---
 

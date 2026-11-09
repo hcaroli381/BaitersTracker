@@ -31,6 +31,7 @@ const MIGRATIONS = [
   'supabase/migrations/20261105_04_pick_rules.sql',
   'supabase/migrations/20261106_07_device_hash_consistency.sql',
   'supabase/migrations/20261109_08_segment_results.sql',
+  'supabase/migrations/20261109_09_free_claim.sql',
 ];
 
 const ADMIN = 'admin';
@@ -705,7 +706,7 @@ test('si el empate cambia, los votos del desempate anterior no cuentan', async (
 });
 
 /* ------------------------------------------------------------------ */
-/* 5. Elección de jugador: un jugador, un móvil y comodines ocultos    */
+/* 5. Elección de jugador: el último móvil gana y comodines ocultos    */
 /* ------------------------------------------------------------------ */
 
 const TOK_A = 'a'.repeat(64);
@@ -717,62 +718,92 @@ async function addFreePlayer(db, name) {
   return res.rows[0].id;
 }
 
-test('claim_player: un jugador cogido no se vuelve a coger', async () => {
+test('claim_player: el último móvil que elige se queda al jugador', async () => {
+  const db = await freshDb();
+  const ana = await addFreePlayer(db, 'Ana');
+
+  await db.query(`select public.claim_player($1,$2,7)`, [TOK_A, ana]);
+
+  // Otro móvil puede volver a cogerlo: el vínculo se mueve y conserva el dorsal.
+  await db.query(`select public.claim_player($1,$2,null)`, [TOK_B, ana]);
+  const row = await db.query(`select shirt_number, device_hash from public.players where id = $1`, [ana]);
+  const expected = await db.query(`select encode(sha256(convert_to($1, 'UTF8')), 'hex') as h`, [TOK_B]);
+  assert.equal(row.rows[0].shirt_number, 7, 'el dorsal no se pierde al cambiar de móvil');
+  assert.equal(row.rows[0].device_hash, expected.rows[0].h);
+
+  // El móvil anterior ya no entra como él.
+  const me = await db.query(`select public.me($1) as viejo, public.me($2) as nuevo`, [TOK_A, TOK_B]);
+  assert.equal(me.rows[0].viejo, null);
+  assert.equal(me.rows[0].nuevo, ana);
+
+  // El mismo móvil puede corregir su propio dorsal.
+  await db.query(`select public.claim_player($1,$2,10)`, [TOK_B, ana]);
+  const fixed = await db.query(`select shirt_number from public.players where id = $1`, [ana]);
+  assert.equal(fixed.rows[0].shirt_number, 10);
+
+  // Token inválido: fuera.
+  await rejects(db.query(`select public.claim_player($1,$2,null)`, ['corto', ana]), /Token de dispositivo/);
+
+  await db.close();
+});
+
+test('claim_player: un móvil solo entra como un jugador', async () => {
   const db = await freshDb();
   const ana = await addFreePlayer(db, 'Ana');
   const bruno = await addFreePlayer(db, 'Bruno');
 
   await db.query(`select public.claim_player($1,$2,7)`, [TOK_A, ana]);
+  // El mismo móvil elige a otro: suelta al anterior en vez de acumular dos.
+  await db.query(`select public.claim_player($1,$2,9)`, [TOK_A, bruno]);
 
-  // Otro móvil no puede cogerlo, ni siquiera con otro dorsal.
-  await rejects(db.query(`select public.claim_player($1,$2,8)`, [TOK_B, ana]), /ya lo ha cogido otro m\u00f3vil/);
-
-  // Un móvil ya vinculado no puede coger además a otro jugador.
-  await rejects(db.query(`select public.claim_player($1,$2,9)`, [TOK_A, bruno]), /ya est\u00e1 vinculado a otro jugador/);
-
-  // El mismo móvil puede corregir su propio dorsal.
-  await db.query(`select public.claim_player($1,$2,10)`, [TOK_A, ana]);
-  const row = await db.query(`select shirt_number, device_hash from public.players where id = $1`, [ana]);
-  assert.equal(row.rows[0].shirt_number, 10);
-
-  // Token inválido: fuera.
-  await rejects(db.query(`select public.claim_player($1,$2,null)`, ['corto', bruno]), /Token de dispositivo/);
+  const rows = await db.query(`select id, device_hash from public.players`);
+  const byId = new Map(rows.rows.map((r) => [r.id, r.device_hash]));
+  assert.equal(byId.get(ana), null, 'Ana queda libre');
+  assert.ok(byId.get(bruno), 'Bruno queda vinculado a este móvil');
+  assert.equal((await db.query(`select public.me($1) as id`, [TOK_A])).rows[0].id, bruno);
 
   await db.close();
 });
 
-test('claim_player: el admin puede desactivar el bloqueo y liberar', async () => {
+test('claim_player sin dorsal conserva el que ya tenía tras liberar el móvil', async () => {
   const db = await freshDb();
   const ana = await addFreePlayer(db, 'Ana');
 
   await db.query(`select public.claim_player($1,$2,7)`, [TOK_A, ana]);
-  await db.query(`select public.admin_set_lock_claimed($1,false)`, [ADMIN]);
+  // El admin libera el móvil. En producción lo hace admin_release_player, que
+  // solo pone device_hash = null (es anterior a estas migraciones): el dorsal
+  // sigue reservado a su nombre.
+  await db.query(`update public.players set device_hash = null where id = $1`, [ana]);
 
-  // Sin bloqueo, otro móvil puede volver a cogerlo (como antes).
-  await db.query(`select public.claim_player($1,$2,8)`, [TOK_B, ana]);
-  const row = await db.query(`select device_hash from public.players where id = $1`, [ana]);
+  // Al volver a vincular sin pasar dorsal, se conserva el 7.
+  await db.query(`select public.claim_player($1,$2,null)`, [TOK_B, ana]);
+  const row = await db.query(`select shirt_number, device_hash from public.players where id = $1`, [ana]);
   const expected = await db.query(`select encode(sha256(convert_to($1, 'UTF8')), 'hex') as h`, [TOK_B]);
+  assert.equal(row.rows[0].shirt_number, 7, 'no se pierde el dorsal al volver a vincular');
   assert.equal(row.rows[0].device_hash, expected.rows[0].h);
-
   await db.close();
 });
 
-test('ajustes de elección: por defecto bloqueado y comodines ocultos', async () => {
+test('ajustes de elección: bloqueo apagado y comodines ocultos', async () => {
   const db = await freshDb();
 
   let res = await db.query(`select lock_claimed, wildcards_pickable from public.settings where id = 1`);
-  assert.equal(res.rows[0].lock_claimed, true);
+  assert.equal(res.rows[0].lock_claimed, false, 'el bloqueo queda apagado por compatibilidad');
   assert.equal(res.rows[0].wildcards_pickable, false);
 
-  await rejects(db.query(`select public.admin_set_lock_claimed($1,false)`, ['mala']), /Contrase\u00f1a de admin/);
   await rejects(db.query(`select public.admin_set_wildcards_pickable($1,true)`, ['mala']), /Contrase\u00f1a de admin/);
 
-  await db.query(`select public.admin_set_lock_claimed($1,false)`, [ADMIN]);
   await db.query(`select public.admin_set_wildcards_pickable($1,true)`, [ADMIN]);
 
   res = await db.query(`select lock_claimed, wildcards_pickable from public.settings where id = 1`);
   assert.equal(res.rows[0].lock_claimed, false);
   assert.equal(res.rows[0].wildcards_pickable, true);
+
+  // Una pestaña con el JS anterior puede llamar al interruptor retirado, pero
+  // ya no vuelve a esconder a los jugadores vinculados.
+  await db.query(`select public.admin_set_lock_claimed($1,true)`, [ADMIN]);
+  res = await db.query(`select lock_claimed from public.settings where id = 1`);
+  assert.equal(res.rows[0].lock_claimed, false);
 
   await db.close();
 });
