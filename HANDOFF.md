@@ -332,7 +332,8 @@ Siguiente paso natural: fotos y el primer partido.
 - **Todos eligen, el último móvil gana.** «¿Quién eres?» muestra siempre a todos los activos con su
   dorsal; ya no hay estado «cogido» ni interruptor en Admin. `claim_player` mueve el vínculo al último
   móvil y suelta el anterior; el móvil viejo deja de entrar como ese jugador al volver a la app.
-  Migración `20261109_09_free_claim.sql` (idempotente, después de la 08).
+  Migración `20261109_09_free_claim.sql` (idempotente, después de la 08), aplicada en producción el
+  9/11/2026 (versión `20261109095539`).
 
 ---
 
@@ -463,8 +464,8 @@ update public.players set can_vote = false where name = 'Nombre';
 en el repo para activar el tiempo real; el cambio de dorsal propio se retiró de la interfaz y su RPC
 (`change_my_number`) sigue en la base sin que la llame nadie. **07** aplicada
 en producción el 6/11/2026: unifica la huella del móvil (ver §11). Las migraciones 01-03 se aplicaron a mano; la 05, la 06, la 07 y la **08** con el conector de Supabase.
-La **08** quedó aplicada en producción el 9/11/2026 (versión `20261109092920`). La **09** está en el
-repo pendiente de aplicar: mueve el vínculo al último móvil y deja `lock_claimed` en `false`.
+La **08** quedó aplicada en producción el 9/11/2026 (versión `20261109092920`). La **09** quedó aplicada
+el 9/11/2026 (versión `20261109095539`): mueve el vínculo al último móvil y deja `lock_claimed` en `false`.
 Comprobado después: una sola firma por función, `appearances` con clave `(match_id, player_id, segment)`
 y las cuatro vistas respondiendo. Al pasar la clave a tres columnas hubo que quitar las dos claves
 foráneas de `votes` hacia `appearances` (Postgres no deja cambiar la PK con ellas colgando); su
@@ -480,7 +481,7 @@ integridad la impone `cast_vote`, y se restauró la referencia de `votes` a `pla
   6. `20261105_06_self_number_realtime.sql` — publicación realtime.
   7. `20261106_07_device_hash_consistency.sql` — la huella del móvil se resuelve igual en `me()` y en `claim_player` (md5 antiguo y sha256 nuevo). Sin ella, un móvil recién vinculado no se reconoce al recargar y su jugador ya no sale en «¿Quién eres?».
   8. `20261109_08_segment_results.sql` — resultado por tramo: `wins`/`draws`/`losses`, `conceded` y `segment_results` en `player_match`, y `player_stats` los suma. Aplicada en producción el 9/11/2026 con el conector de Supabase; las vistas quedaron con `security_invoker = true` y sin `SELECT` para `anon`.
-  9. `20261109_09_free_claim.sql` — todos los jugadores salen siempre; `claim_player` mueve el vínculo al último móvil y suelta al anterior. Deja `lock_claimed` en `false` por compatibilidad. Pendiente de aplicar en producción.
+  9. `20261109_09_free_claim.sql` — todos los jugadores salen siempre; `claim_player` mueve el vínculo al último móvil y suelta al anterior. Deja `lock_claimed` en `false` por compatibilidad. Aplicada en producción el 9/11/2026 con el conector de Supabase.
 - **La 02 depende de la 01** (usa `kickoff_at`) y **la 03 de la 02** (usa `appearances` y
   `player_match`). Si algo falla, el `begin … commit` deja todo como estaba.
 - Antes de aplicarlas en producción conviene revisar las firmas reales de las funciones en Supabase. Las
