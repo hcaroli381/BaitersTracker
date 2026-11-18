@@ -11,7 +11,7 @@ let routeVersion = 0;
 /** Marcador: este navegador ha decidido no ser jugador (p. ej. el PC del admin). */
 const NO_PLAYER = 'bt.no.player';
 
-const MARK = '<img class="wordmark__mark" src="assets/img/mark.svg" width="25" height="25" alt="">';
+const MARK = '<img class="wordmark__mark" src="assets/img/duende.png" width="28" height="28" alt="">';
 const WORDMARK = `<span class="wordmark">${MARK}<span>Baiters<b>Tracker</b></span></span>`;
 
 /* ------------------------------------------------------------------ */
@@ -535,7 +535,12 @@ async function renderRoute({ animate = true, scroll = true, transition = false }
     else a.removeAttribute('aria-current');
   });
 
-  if (animate && !useTransition) host.innerHTML = '<div class="loading"><span></span></div>';
+  if (animate && !useTransition) {
+    host.innerHTML = `<div class="loading" role="status" aria-label="Cargando">
+      <img class="duende--waiting" src="assets/img/duende-concentrado.png" width="48" height="48" alt="">
+      <span aria-hidden="true"></span>
+    </div>`;
+  }
 
   // Datos al día en cada pantalla: las notas de los demás cambian entre visitas.
   let stale = false;

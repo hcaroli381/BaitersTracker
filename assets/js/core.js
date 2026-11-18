@@ -265,7 +265,19 @@ export function toast(message, kind = 'info') {
   node.className = 'toast';
   node.dataset.kind = kind;
   node.setAttribute('role', 'status');
-  node.textContent = message;
+  const expression = kind === 'error' ? 'mosqueado' : kind === 'vote' ? 'guino' : null;
+  if (expression) {
+    const face = document.createElement('img');
+    face.className = `duende--badge duende--${expression}`;
+    face.src = `assets/img/duende-${expression}.png`;
+    face.width = 36;
+    face.height = 36;
+    face.alt = '';
+    node.append(face);
+  }
+  const text = document.createElement('span');
+  text.textContent = message;
+  node.append(text);
   host.appendChild(node);
   requestAnimationFrame(() => node.classList.add('is-on'));
 

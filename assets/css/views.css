@@ -159,6 +159,20 @@ a.score:hover {
   opacity: 0.72;
 }
 
+.mvp__result {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 380px) {
+  .mvp__result {
+    align-items: end;
+    flex-direction: column;
+  }
+}
+
 /* ---------------------------------------------------------------- */
 /* Filas de jugador                                                  */
 /* ---------------------------------------------------------------- */

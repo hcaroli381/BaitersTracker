@@ -402,11 +402,6 @@ select.input {
   gap: 14px;
 }
 
-.boot__mark {
-  width: 64px;
-  height: 64px;
-}
-
 .boot__label {
   color: var(--faint);
   font-size: 14px;
@@ -414,8 +409,17 @@ select.input {
 
 .loading {
   display: grid;
-  place-items: center;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
   min-height: 42vh;
+}
+
+.duende--badge {
+  flex: none;
+  padding: 3px;
+  border-radius: var(--r-s);
+  background: var(--bg);
 }
 
 .loading span {

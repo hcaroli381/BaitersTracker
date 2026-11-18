@@ -457,6 +457,9 @@
 }
 
 .toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: max-content;
   max-width: 100%;
   padding: 13px 18px;
@@ -465,6 +468,7 @@
   color: var(--bg);
   font-size: 15px;
   font-weight: 650;
+  overflow-wrap: anywhere;
   opacity: 0;
   transform: translateY(12px);
   transition: opacity 0.2s var(--ease), transform 0.2s var(--ease);

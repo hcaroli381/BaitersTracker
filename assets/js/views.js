@@ -58,6 +58,31 @@ function scoreBoard(match) {
   </div>`;
 }
 
+const celebratedMatches = new Set();
+
+function mvpResult(matchId, score) {
+  return `<span class="mvp__result">
+    ${rateBadge(score, 'rate--ink')}
+    <picture data-mvp-reaction="${esc(matchId)}">
+      <img class="duende--badge" src="assets/img/duende.png" width="36" height="36" alt="">
+    </picture>
+  </span>`;
+}
+
+function celebrateMvp(root) {
+  const picture = root.querySelector('[data-mvp-reaction]');
+  const matchId = picture?.dataset.mvpReaction;
+  const motion = '(prefers-reduced-motion: no-preference)';
+  if (!matchId || celebratedMatches.has(matchId) || !window.matchMedia(motion).matches) return;
+
+  celebratedMatches.add(matchId);
+  const animation = document.createElement('source');
+  animation.media = motion;
+  animation.type = 'image/webp';
+  animation.srcset = 'assets/img/duende-carcajada.webp';
+  picture.prepend(animation);
+}
+
 function empty(title, text) {
   return `<section class="void">
     <h2 class="void__title">${esc(title)}</h2>
@@ -216,7 +241,7 @@ function openTieSheet(detail, candidate, refresh) {
           try {
             await castMvpTieVote(detail.summary.id, candidate.player.id);
             s.close();
-            toast(`Voto guardado: ${candidate.player.name}`);
+            toast(`Voto guardado: ${candidate.player.name}`, 'vote');
             refresh();
           } catch (err) {
             toast(errorMessage(err), 'error');
@@ -302,7 +327,7 @@ export async function home() {
             ? `<div class="mvp">
                 ${avatar(lastDetail.mvp.player, 48)}
                 <span class="mvp__text"><b>${esc(lastDetail.mvp.player.name)}</b><span>MVP del partido</span></span>
-                ${rateBadge(lastDetail.mvp.score, 'rate--ink')}
+                ${mvpResult(last.id, lastDetail.mvp.score)}
               </div>`
             : `<p class="score__foot">${esc(outcomeText(last.goals_a, last.goals_b))}</p>`
         }
@@ -343,7 +368,7 @@ export async function home() {
     </div>
   </div>`;
 
-  return { html, stale, mount() {} };
+  return { html, stale, mount: celebrateMvp };
 }
 
 /* ------------------------------------------------------------------ */
@@ -581,7 +606,7 @@ export async function matchView(id) {
               <span class="mvp__text"><b>${esc(mvp.player.name)}</b><span>${esc(
                 mvp.decided_by === 'desempate' ? 'MVP del partido · desempate' : 'MVP del partido'
               )}</span></span>
-              ${rateBadge(mvp.score, 'rate--ink')}
+              ${mvpResult(summary.id, mvp.score)}
             </a>`
           : ''
       }
@@ -627,6 +652,7 @@ export async function matchView(id) {
   return {
     html,
     mount(root) {
+      celebrateMvp(root);
       const refresh = async () => {
         try {
           await loadCore();
@@ -721,7 +747,7 @@ function openPlayerSheet(detail, row, refresh) {
               try {
                 await castVote(detail.summary.id, p.id, chosen);
                 s.close();
-                toast('Nota guardada');
+                toast('Nota guardada', 'vote');
                 refresh();
               } catch (err) {
                 toast(errorMessage(err), 'error');
