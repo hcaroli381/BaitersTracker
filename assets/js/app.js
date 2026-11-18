@@ -537,7 +537,10 @@ async function renderRoute({ animate = true, scroll = true, transition = false }
 
   if (animate && !useTransition) {
     host.innerHTML = `<div class="loading" role="status" aria-label="Cargando">
-      <img class="duende--waiting" src="assets/img/duende-concentrado.png" width="48" height="48" alt="">
+      <picture>
+        <source media="(prefers-reduced-motion: no-preference)" type="image/webp" srcset="assets/img/duende-concentrado.webp">
+        <img src="assets/img/duende-concentrado.png" width="48" height="48" alt="">
+      </picture>
       <span aria-hidden="true"></span>
     </div>`;
   }

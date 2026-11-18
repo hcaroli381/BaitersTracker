@@ -267,13 +267,19 @@ export function toast(message, kind = 'info') {
   node.setAttribute('role', 'status');
   const expression = kind === 'error' ? 'mosqueado' : kind === 'vote' ? 'guino' : null;
   if (expression) {
+    const picture = document.createElement('picture');
+    picture.className = 'duende--badge';
+    const animation = document.createElement('source');
+    animation.media = '(prefers-reduced-motion: no-preference)';
+    animation.type = 'image/webp';
+    animation.srcset = `assets/img/duende-${expression}.webp`;
     const face = document.createElement('img');
-    face.className = `duende--badge duende--${expression}`;
     face.src = `assets/img/duende-${expression}.png`;
-    face.width = 36;
-    face.height = 36;
+    face.width = 30;
+    face.height = 30;
     face.alt = '';
-    node.append(face);
+    picture.append(animation, face);
+    node.append(picture);
   }
   const text = document.createElement('span');
   text.textContent = message;

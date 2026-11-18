@@ -15,33 +15,6 @@
   animation: none;
 }
 
-@keyframes duende-waits {
-  40% { transform: translateY(-3px) rotate(-5deg); }
-  70% { transform: rotate(3deg); }
-}
-
-@keyframes duende-winks {
-  35% { transform: rotate(-10deg) scale(1.09); }
-  66% { transform: rotate(4deg); }
-}
-
-@keyframes duende-grumbles {
-  28%, 66% { transform: translateX(-2px) rotate(-5deg); }
-  48%, 84% { transform: translateX(2px) rotate(5deg); }
-}
-
-.duende--waiting {
-  animation: duende-waits 1.2s var(--ease) 2;
-}
-
-.toast.is-on .duende--guino {
-  animation: duende-winks 0.44s var(--ease);
-}
-
-.toast.is-on .duende--mosqueado {
-  animation: duende-grumbles 0.38s var(--ease);
-}
-
 @media (hover: hover) and (prefers-reduced-motion: no-preference) {
   a.score,
   .scard,

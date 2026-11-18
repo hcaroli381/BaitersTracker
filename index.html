@@ -22,10 +22,13 @@
 <body>
 <div id="app">
   <div class="boot" role="status">
-    <img class="duende--waiting" src="assets/img/duende-concentrado.png" width="64" height="64" alt="">
+    <picture>
+      <source media="(prefers-reduced-motion: no-preference)" type="image/webp" srcset="assets/img/duende-concentrado.webp">
+      <img src="assets/img/duende-concentrado.png" width="64" height="64" alt="">
+    </picture>
     <span class="boot__label">Cargando vestuario</span>
   </div>
 </div>
-<script type="module" src="assets/js/app.js"></script>
+<script type="module" src="assets/js/app.js?v=duende"></script>
 </body>
 </html>
