@@ -1,5 +1,5 @@
 import { isConfigured, getConfig } from './config.js';
-import { state, esc, pad2, photoBlock, avatar, toast, errorMessage, parseRoute, href, stagger, animateCounts } from './core.js';
+import { state, esc, pad2, photoBlock, avatar, toast, errorMessage, parseRoute, href } from './core.js';
 import { signIn, signOut, session, loadCore, whoAmI, claimPlayer, takenNumbers, playerById, subscribeLive } from './data.js';
 import { home, ranking, matches, matchView, playerView, squad } from './views.js';
 import { adminView } from './admin.js';
@@ -10,7 +10,8 @@ let shellReady = false;
 /** Marcador: este navegador ha decidido no ser jugador (p. ej. el PC del admin). */
 const NO_PLAYER = 'bt.no.player';
 
-const WORDMARK = '<span class="wordmark">Baiters<span>Tracker</span></span>';
+const MARK = '<img class="wordmark__mark" src="assets/img/mark.svg" width="25" height="25" alt="">';
+const WORDMARK = `<span class="wordmark">${MARK}<span>Baiters<b>Tracker</b></span></span>`;
 
 /* ------------------------------------------------------------------ */
 /* Arranque                                                            */
@@ -54,18 +55,20 @@ function renderNoConfig() {
 function renderLogin() {
   window.scrollTo(0, 0);
   const cfg = getConfig();
-  app.innerHTML = `<div class="gate">
+  app.innerHTML = `<main class="gate gate--login">
     <div class="gate__head">
+      ${MARK}
       <h1 class="gate__logo">Baiters<br><span>Tracker</span></h1>
       <p class="gate__note">No es suerte, es bait.</p>
     </div>
     <form id="loginForm" class="gate__panel">
+      <h2 class="gate__h">Acceso al vestuario</h2>
       <label class="field"><span class="field__label">Contraseña del grupo</span>
         <input class="input" name="password" type="password" autocomplete="current-password" enterkeyhint="go" required></label>
       <button class="btn btn--acid" type="submit">Entrar</button>
       <p class="formerr" id="loginErr" hidden></p>
     </form>
-  </div>`;
+  </main>`;
 
   const err = app.querySelector('#loginErr');
   const pass = app.querySelector('#loginForm input[name="password"]');
@@ -317,11 +320,11 @@ function renderNumberStep(player, { forced = false } = {}) {
 /* ------------------------------------------------------------------ */
 
 const NAV = [
-  { key: 'inicio', label: 'Inicio' },
-  { key: 'ranking', label: 'Tabla' },
-  { key: 'partidos', label: 'Partidos' },
-  { key: 'plantilla', label: 'Plantilla' },
-  { key: 'admin', label: 'Admin' },
+  { key: 'inicio', label: 'Inicio', icon: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>' },
+  { key: 'ranking', label: 'Tabla', icon: '<path d="M3 21v-7h6v7m0 0V5h6v16m0 0V11h6v10M3 21h18"/>' },
+  { key: 'partidos', label: 'Partidos', icon: '<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M12 5v14M2.5 9h3v6h-3m19-6h-3v6h3"/><circle cx="12" cy="12" r="3"/>' },
+  { key: 'plantilla', label: 'Plantilla', icon: '<path d="m8 4-5 3 2 5 3-1v9h8v-9l3 1 2-5-5-3a4 4 0 0 1-8 0z"/>' },
+  { key: 'admin', label: 'Admin', icon: '<path d="M4 7h8m4 0h4M4 17h4m4 0h8"/><circle cx="14" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>' },
 ];
 
 async function start() {
@@ -443,19 +446,25 @@ function renderShell() {
   shellReady = true;
 
   app.innerHTML = `<div class="shell">
-    <header class="bar">
-      <a class="bar__brand" href="${href('inicio')}">${WORDMARK}</a>
-      <nav class="topnav" aria-label="Secciones">
-        ${NAV.map((n) => `<a class="topnav__item" data-nav="${n.key}" href="${href(n.key)}">${n.label}</a>`).join('')}
-      </nav>
-      ${meChip()}
-      <button class="bar__out" type="button" data-out>Salir</button>
+    <header class="shell__header">
+      <div class="bar">
+        <a class="bar__brand" href="${href('inicio')}" aria-label="BaitersTracker, inicio">${WORDMARK}</a>
+        <nav class="topnav" aria-label="Secciones">
+          ${NAV.map((n) => `<a class="topnav__item" data-nav="${n.key}" href="${href(n.key)}">${n.label}</a>`).join('')}
+        </nav>
+        ${meChip()}
+        <button class="bar__out" type="button" data-out>Salir</button>
+      </div>
     </header>
 
     <main id="view" class="viewHost"></main>
 
     <nav class="dock" aria-label="Navegación">
-      ${NAV.map((n) => `<a class="dock__item" data-nav="${n.key}" href="${href(n.key)}">${n.label}</a>`).join('')}
+      ${NAV.map((n) => `<a class="dock__item" data-nav="${n.key}" href="${href(n.key)}">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${n.icon}</svg>
+        ${n.label}
+      </a>`).join('')}
     </nav>
   </div>`;
 
@@ -553,10 +562,6 @@ async function renderRoute({ animate = true, scroll = true, transition = false }
       view.mount?.(host);
     } catch (err) {
       console.error(err);
-    }
-    if (animate && !useTransition) {
-      stagger(host);
-      animateCounts(host);
     }
     if (scroll) window.scrollTo(0, 0);
   };

@@ -60,9 +60,9 @@ export async function adminView() {
           <p class="lede">Solo para quien gestiona el grupo.</p>
         </header>
         <form class="gatebox" id="adminGate">
-          <h2 class="subhead">Contraseña de administrador</h2>
+          <h2 class="subhead" id="adminPasswordLabel">Contraseña de administrador</h2>
           <p class="hint">Es distinta de la del grupo. Se guarda solo en esta pestaña.</p>
-          <input class="input" type="password" name="pw" autocomplete="current-password" placeholder="Contraseña" required>
+          <input class="input" type="password" name="pw" autocomplete="current-password" aria-labelledby="adminPasswordLabel" required>
           <button class="btn btn--acid" type="submit">Desbloquear</button>
           <p class="formerr" id="gateErr" hidden></p>
         </form>

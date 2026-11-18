@@ -6,7 +6,10 @@
   display: grid;
   gap: 14px;
   max-width: 420px;
-  padding-top: 4px;
+  padding: 18px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-m);
+  background: var(--s1);
 }
 
 .admin {
@@ -24,6 +27,7 @@
   display: grid;
   gap: 12px;
   padding: 16px;
+  border: 1px solid var(--line-2);
   border-radius: var(--r-m);
   background: var(--s1);
 }
@@ -126,10 +130,10 @@
 }
 
 .iconbtn {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 14px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--r-s);
   background: var(--s2);
   color: var(--text);
   font-size: 14px;
@@ -293,7 +297,7 @@
 .sheet__scrim {
   position: absolute;
   inset: 0;
-  background: rgba(4, 6, 3, 0.74);
+  background: #000b;
   opacity: 0;
   transition: opacity 0.2s var(--ease);
 }
@@ -306,7 +310,8 @@
   max-height: 92dvh;
   display: flex;
   flex-direction: column;
-  border-radius: 28px 28px 0 0;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-l) var(--r-l) 0 0;
   background: var(--s1);
   transform: translateY(100%);
   transition: transform 0.28s var(--ease);
@@ -327,6 +332,7 @@
 .sheet__head {
   position: relative;
   padding: 22px 64px 10px 20px;
+  border-bottom: 1px solid var(--line);
 }
 
 .sheet__grab {
@@ -420,7 +426,7 @@
   }
 
   .sheet__panel {
-    border-radius: 28px;
+    border-radius: var(--r-l);
     transform: translateY(12px);
     opacity: 0;
     transition: transform 0.24s var(--ease), opacity 0.24s var(--ease);

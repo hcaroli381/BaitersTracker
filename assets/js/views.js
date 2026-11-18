@@ -22,8 +22,6 @@ import {
   href,
   votesOpen,
   voteOpensLabel,
-  count,
-  stagger,
 } from './core.js';
 import {
   sortedBy,
@@ -51,6 +49,13 @@ function pageTitle(title, lede = '') {
 
 function section(title, extra = '') {
   return `<div class="sec"><h2 class="sec__title">${esc(title)}</h2>${extra}</div>`;
+}
+
+function scoreBoard(match) {
+  return `<div class="score__board">
+    <div class="score__side">${teamTag('A')}<b class="score__n">${num(match.goals_a, 0)}</b></div>
+    <div class="score__side">${teamTag('B')}<b class="score__n">${num(match.goals_b, 0)}</b></div>
+  </div>`;
 }
 
 function empty(title, text) {
@@ -288,14 +293,7 @@ export async function home() {
           <span class="score__date">${esc(longDate(last.played_on))}</span>
           ${pill('Último partido')}
         </div>
-        <div class="score__board">
-          <span class="score__n"${count(last.goals_a)}>${num(last.goals_a, 0)}</span>
-          <span class="score__sep" aria-hidden="true"></span>
-          <span class="score__n"${count(last.goals_b)}>${num(last.goals_b, 0)}</span>
-          <span class="score__who">${teamTag('A')}</span>
-          <span></span>
-          <span class="score__who">${teamTag('B')}</span>
-        </div>
+        ${scoreBoard(last)}
         ${
           lastDetail?.mvp
             ? `<div class="mvp">
@@ -313,31 +311,33 @@ export async function home() {
     ${todo}
     ${scorecard}
 
-    ${
-      best.length
-        ? `${section('Mejores notas', `<a class="more" href="${href('ranking')}">Ver tabla</a>`)}
-           <ol class="plist">
-             ${best
-               .map(
-                 (p, i) => `<li><a class="prow" href="${href('jugador', p.id)}">
-                   <span class="prow__rank">${i + 1}</span>
-                   ${avatar(p, 44)}
-                   <span class="prow__who"><b class="prow__name">${esc(p.name)}</b>
-                     <span class="prow__sub">${esc(plural(p.stats.played, 'partido', 'partidos'))}</span></span>
-                   ${rateBadge(p.stats.avg_rating)}
-                 </a></li>`
-               )
-               .join('')}
-           </ol>`
-        : ''
-    }
+    <div class="home__lists">
+      ${
+        best.length
+          ? `<section>${section('Mejores notas', `<a class="more" href="${href('ranking')}">Ver tabla</a>`)}
+             <ol class="plist">
+               ${best
+                 .map(
+                   (p, i) => `<li><a class="prow" href="${href('jugador', p.id)}">
+                     <span class="prow__rank">${i + 1}</span>
+                     ${avatar(p, 44)}
+                     <span class="prow__who"><b class="prow__name">${esc(p.name)}</b>
+                       <span class="prow__sub">${esc(plural(p.stats.played, 'partido', 'partidos'))}</span></span>
+                     ${rateBadge(p.stats.avg_rating)}
+                   </a></li>`
+                 )
+                 .join('')}
+             </ol></section>`
+          : ''
+      }
 
-    ${
-      recent.length
-        ? `${section('Últimos resultados', `<a class="more" href="${href('partidos')}">Todos</a>`)}
-           <ol class="mlist">${recent.map(matchRow).join('')}</ol>`
-        : ''
-    }
+      ${
+        recent.length
+          ? `<section>${section('Últimos resultados', `<a class="more" href="${href('partidos')}">Todos</a>`)}
+             <ol class="mlist">${recent.map(matchRow).join('')}</ol></section>`
+          : ''
+      }
+    </div>
   </div>`;
 
   return { html, mount() {} };
@@ -437,7 +437,6 @@ export async function ranking() {
             b.setAttribute('aria-selected', String(b === btn));
           });
           slot.innerHTML = boardHTML(btn.dataset.sort, btn.dataset.dir);
-          stagger(slot);
         });
       });
     },
@@ -571,14 +570,7 @@ export async function matchView(id) {
         <span class="score__date">${esc(longDate(summary.played_on))}</span>
         ${pill(open ? 'Votación abierta' : 'Cerrado', open ? 'acid' : '')}
       </div>
-      <div class="score__board">
-        <span class="score__n"${count(summary.goals_a)}>${num(summary.goals_a, 0)}</span>
-        <span class="score__sep" aria-hidden="true"></span>
-        <span class="score__n"${count(summary.goals_b)}>${num(summary.goals_b, 0)}</span>
-        <span class="score__who">${teamTag('A')}</span>
-        <span></span>
-        <span class="score__who">${teamTag('B')}</span>
-      </div>
+      ${scoreBoard(summary)}
       ${
         mvp
           ? `<a class="mvp" href="${href('jugador', mvp.player.id)}">
@@ -638,7 +630,6 @@ export async function matchView(id) {
           const next = await matchView(id);
           root.innerHTML = next.html;
           next.mount(root);
-          stagger(root);
         } catch (err) {
           toast(errorMessage(err), 'error');
         }

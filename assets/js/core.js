@@ -321,7 +321,6 @@ export function sheet({ title, subtitle = '', body = '', actions = [] }) {
       <div class="sheet__body">${body}</div>
       ${actions.length ? '<footer class="sheet__foot"></footer>' : ''}
     </div>`;
-  stagger(wrap);
   const panel = wrap.querySelector('.sheet__panel');
   const foot = wrap.querySelector('.sheet__foot');
   actions.forEach((a) => {
@@ -421,78 +420,4 @@ export function parseRoute() {
 
 export function href(name, id) {
   return `#/${name}${id ? `/${id}` : ''}`;
-}
-
-/* ------------------------------------------------------------------ */
-/* Movimiento                                                          */
-/* ------------------------------------------------------------------ */
-
-/** Marca una cifra para que `animateCounts` la cuente al entrar. */
-export function count(value) {
-  return Number.isFinite(value) ? ' data-count="' + value + '"' : '';
-}
-
-/** Contenedores cuyos hijos entran en cascada (ver motion.css). */
-const STAGGER_TARGETS = [
-  '.view > *',
-  '.sheet__body > *',
-  '.plist > li',
-  '.mlist > li',
-  '.hlist > li',
-  '.squad > *',
-  '.teams > .team',
-  '.cuts > .cut',
-  '.adminlist > .adminrow',
-  '.voters > .voters__row',
-  '.lineupEdit > .lineupEdit__row',
-  '.scale > .scale__btn',
-  '.seg > .seg__btn',
-  '.stats > .stat',
-  '.sheet__foot > .btn',
-];
-
-/**
- * Reparte `--i` (0–7) por los hijos de listas y bloques para que
- * motion.css los anime en cascada. Sin llamada, entran todos a la vez.
- */
-export function stagger(root = document) {
-  STAGGER_TARGETS.forEach((selector) => {
-    root.querySelectorAll(selector).forEach((el, index) => {
-      if (!el.style.getPropertyValue('--i')) el.style.setProperty('--i', String(Math.min(index, 7)));
-    });
-  });
-}
-
-/** Cuenta una cifra de 0 al valor final en ~0,6 s. */
-export function animateCounts(root = document) {
-  const nodes = root.querySelectorAll('[data-count]');
-  if (!nodes.length) return;
-  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  nodes.forEach((el) => {
-    const target = Number(el.dataset.count);
-    if (!Number.isFinite(target)) return;
-    // Ya se ha contado este mismo valor: no volver a empezar desde cero.
-    if (el.dataset.counted === String(target)) return;
-    el.dataset.counted = String(target);
-    if (document.hidden) {
-      el.textContent = String(target);
-      return;
-    }
-    const duration = 620;
-    const started = performance.now();
-    if (el._countFrame) cancelAnimationFrame(el._countFrame);
-    clearTimeout(el._countTimer);
-    const step = (now) => {
-      const t = Math.min(1, (now - started) / duration);
-      const eased = 1 - Math.pow(1 - t, 3);
-      el.textContent = String(Math.round(target * eased));
-      if (t < 1) el._countFrame = requestAnimationFrame(step);
-    };
-    el.textContent = '0';
-    el._countFrame = requestAnimationFrame(step);
-    // Red de seguridad: si la pestaña se oculta, el número no se queda a medias.
-    el._countTimer = setTimeout(() => {
-      el.textContent = String(target);
-    }, duration + 400);
-  });
 }
