@@ -251,10 +251,13 @@ export async function home() {
   const next = nextMatch();
   const recent = state.matches.filter((m) => m.status === 'closed').slice(0, 4);
 
-  const [lastDetail, nextDetail] = await Promise.all([
-    last ? matchDetail(last.id).catch(() => null) : null,
-    next && state.me ? matchDetail(next.id).catch(() => null) : null,
+  const [lastResult, nextResult] = await Promise.allSettled([
+    last ? matchDetail(last.id) : null,
+    next && state.me ? matchDetail(next.id) : null,
   ]);
+  const lastDetail = lastResult.value;
+  const nextDetail = nextResult.value;
+  const stale = lastResult.status === 'rejected' || nextResult.status === 'rejected';
 
   const progress = nextDetail ? voteProgress(nextDetail) : null;
   const best = sortedBy('rating').filter((p) => (p.stats?.played || 0) > 0 && p.stats.avg_rating != null).slice(0, 5);
@@ -340,7 +343,7 @@ export async function home() {
     </div>
   </div>`;
 
-  return { html, mount() {} };
+  return { html, stale, mount() {} };
 }
 
 /* ------------------------------------------------------------------ */

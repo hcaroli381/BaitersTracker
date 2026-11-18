@@ -6,6 +6,7 @@ import { adminView } from './admin.js';
 
 const app = document.getElementById('app');
 let shellReady = false;
+let routeVersion = 0;
 
 /** Marcador: este navegador ha decidido no ser jugador (p. ej. el PC del admin). */
 const NO_PLAYER = 'bt.no.player';
@@ -180,6 +181,8 @@ function renderNumberStep(player, { forced = false } = {}) {
   let editing = !existing;
 
   const paint = () => {
+    if (!isCurrent()) return;
+    freshness.hidden = !(stale || view.stale);
     const confirming = Boolean(existing) && !editing;
 
     app.innerHTML = `<div class="pick pick--num">
@@ -457,6 +460,10 @@ function renderShell() {
       </div>
     </header>
 
+    <aside class="freshness" id="freshness" hidden>
+      <span role="status">Ves datos anteriores. No se han podido actualizar.</span>
+      <button class="btn btn--ghost btn--sm" id="retryFreshness" type="button">Reintentar</button>
+    </aside>
     <main id="view" class="viewHost"></main>
 
     <nav class="dock" aria-label="Navegación">
@@ -467,6 +474,16 @@ function renderShell() {
       </a>`).join('')}
     </nav>
   </div>`;
+
+  app.querySelector('#retryFreshness').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      await renderRoute({ animate: false, scroll: false });
+    } finally {
+      button.disabled = false;
+    }
+  });
 
   app.querySelector('[data-claim]')?.addEventListener('click', () => {
     localStorage.removeItem(NO_PLAYER);
@@ -501,6 +518,9 @@ async function renderRoute({ animate = true, scroll = true, transition = false }
   const route = parseRoute();
   const host = document.getElementById('view');
   if (!host) return;
+  const version = ++routeVersion;
+  const freshness = document.getElementById('freshness');
+  const isCurrent = () => version === routeVersion && host.isConnected;
 
   const useTransition =
     transition && animate && typeof document.startViewTransition === 'function' && !reduceMotion();
@@ -518,7 +538,13 @@ async function renderRoute({ animate = true, scroll = true, transition = false }
   if (animate && !useTransition) host.innerHTML = '<div class="loading"><span></span></div>';
 
   // Datos al día en cada pantalla: las notas de los demás cambian entre visitas.
-  await loadCore().catch(() => {});
+  let stale = false;
+  try {
+    await loadCore();
+  } catch {
+    stale = true;
+  }
+  if (!isCurrent()) return;
 
   let view;
   try {
@@ -555,6 +581,8 @@ async function renderRoute({ animate = true, scroll = true, transition = false }
   }
 
   const paint = () => {
+    if (!isCurrent()) return;
+    freshness.hidden = !(stale || view.stale);
     // Con View Transition la vista nueva debe estar ya asentada para la captura.
     host.classList.toggle('is-quiet', !animate || useTransition);
     host.innerHTML = view.html;
@@ -565,6 +593,8 @@ async function renderRoute({ animate = true, scroll = true, transition = false }
     }
     if (scroll) window.scrollTo(0, 0);
   };
+
+  if (!isCurrent()) return;
 
   if (useTransition) {
     let painted = false;

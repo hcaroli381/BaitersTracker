@@ -472,3 +472,17 @@
   padding: 0 14px;
   font-size: 15px;
 }
+
+.freshness:not([hidden]) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: var(--content);
+  margin: 0 auto;
+  padding: 8px var(--pad);
+  background: var(--s1);
+  border-bottom: 1px solid var(--line-2);
+  color: var(--dim);
+  font-size: 14px;
+}

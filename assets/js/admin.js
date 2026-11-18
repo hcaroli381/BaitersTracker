@@ -594,6 +594,8 @@ async function openLineup(match, opts = {}) {
   const { matchDetail } = await import('./data.js');
   let detail = null;
   let current = 1;
+  let savingGoal = false;
+  let goalRefreshFailed = false;
   let askSplit = Boolean(opts.askSplit);
 
   const s = sheet({
@@ -606,15 +608,17 @@ async function openLineup(match, opts = {}) {
         label: 'Guardar y cerrar',
         variant: 'btn--acid',
         onClick: () => {
+          if (savingGoal || goalRefreshFailed) return;
           s.close();
           toast('Alineación guardada');
-          loadCore().then(() => rerenderAdmin());
+          rerenderAdmin();
         },
       },
     ],
   });
 
   const sheetBody = s.el.querySelector('.sheet__body');
+  const saveButton = s.el.querySelector('.sheet__foot .btn--acid');
   const players = state.players.filter((p) => p.active !== false);
 
   /** Equipo y goles de cada jugador en cada tramo. */
@@ -711,7 +715,8 @@ async function openLineup(match, opts = {}) {
 
   const reload = async (segment) => {
     detail = await matchDetail(match.id);
-    const total = detail?.segmentCount || 1;
+    if (!detail) throw new Error('El partido ya no está disponible');
+    const total = detail.segmentCount || 1;
     current = Math.min(Math.max(1, segment ?? current), total);
     render();
   };
@@ -727,6 +732,22 @@ async function openLineup(match, opts = {}) {
   }
 
   sheetBody.addEventListener('click', async (ev) => {
+    if (savingGoal) return;
+    if (goalRefreshFailed) {
+      if (!ev.target.closest('[data-reload-lineup]')) return;
+      savingGoal = true;
+      try {
+        await reload();
+        goalRefreshFailed = false;
+        saveButton.disabled = false;
+      } catch (e) {
+        toast(errorMessage(e), 'error');
+      } finally {
+        savingGoal = false;
+      }
+      return;
+    }
+
     const ask = ev.target.closest('[data-ask]');
     if (ask) {
       if (ask.dataset.ask === 'no') {
@@ -802,14 +823,36 @@ async function openLineup(match, opts = {}) {
           return;
         }
         const next = Math.max(0, (st.goals || 0) + Number(goalBtn.dataset.goal));
-        await adminRpc('admin_set_goals', {
-          p_pw: pw,
-          p_match: match.id,
-          p_player: playerId,
-          p_goals: next,
-          p_segment: current,
-        });
-        await reload();
+        if (next === st.goals) return;
+
+        savingGoal = true;
+        const controls = sheetBody.querySelectorAll('button:enabled');
+        saveButton.disabled = true;
+        controls.forEach((button) => { button.disabled = true; });
+        try {
+          await adminRpc('admin_set_goals', {
+            p_pw: pw,
+            p_match: match.id,
+            p_player: playerId,
+            p_goals: next,
+            p_segment: current,
+          });
+        } catch (e) {
+          toast(errorMessage(e), 'error');
+        } finally {
+          // Incluso tras un fallo de red, el servidor puede haber guardado el gol.
+          try {
+            await reload();
+          } catch {
+            goalRefreshFailed = true;
+            sheetBody.innerHTML = `<p class="formerr" role="status">No se pudo confirmar el marcador. Actualízalo antes de seguir editando.</p>
+              <button class="btn btn--ghost btn--sm" type="button" data-reload-lineup>Actualizar marcador</button>`;
+          } finally {
+            savingGoal = false;
+            saveButton.disabled = goalRefreshFailed;
+            controls.forEach((button) => { button.disabled = false; });
+          }
+        }
       }
     } catch (e) {
       toast(errorMessage(e), 'error');

@@ -56,12 +56,13 @@ export async function loadCore() {
     sb().from('settings').select('*').eq('id', 1).maybeSingle(),
   ]);
 
-  state.allowSelfVote = settings?.data?.allow_self_vote === true;
-  state.wildcardsPickable = settings?.data?.wildcards_pickable === true;
-
   if (players.error) throw players.error;
   if (stats.error) throw stats.error;
   if (matches.error) throw matches.error;
+  if (settings.error) throw settings.error;
+
+  state.allowSelfVote = settings.data?.allow_self_vote === true;
+  state.wildcardsPickable = settings.data?.wildcards_pickable === true;
 
   const statsById = new Map((stats.data || []).map((s) => [s.id, s]));
   state.stats = stats.data || [];
