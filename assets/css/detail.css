@@ -384,8 +384,9 @@
 
 .phero__photo {
   width: 100%;
-  aspect-ratio: 4 / 5;
-  border-radius: var(--r-m);
+  max-width: 340px;
+  aspect-ratio: 1;
+  border-radius: 24px;
   overflow: hidden;
 }
 
@@ -395,12 +396,6 @@
 
 .phero__photo .ph__init {
   font-size: 96px;
-}
-
-.phero__photo .ph__img,
-.scard__photo .ph__img {
-  object-fit: contain;
-  background: var(--bg);
 }
 
 .phero__name {
@@ -614,8 +609,7 @@
   display: block;
   aspect-ratio: 4 / 5;
   margin-bottom: 8px;
-  border-radius: var(--r-m);
-  border: 1px solid var(--line);
+  border-radius: 20px;
   overflow: hidden;
 }
 
@@ -668,14 +662,6 @@
     gap: 22px 16px;
   }
 
-  .phero {
-    grid-template-columns: minmax(0, 250px) minmax(0, 1fr);
-    gap: 24px;
-  }
-
-  .phero__id {
-    padding: 0 12px 12px 0;
-  }
 }
 
 @media (min-width: 900px) {
@@ -685,5 +671,10 @@
 
   .phero {
     grid-template-columns: 300px minmax(0, 1fr);
+    gap: 28px;
+  }
+
+  .phero__id {
+    padding: 0 12px 12px 0;
   }
 }
