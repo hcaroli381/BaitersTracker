@@ -21,6 +21,7 @@ import {
   errorMessage,
   href,
   kickoffDate,
+  msUntilVotesOpen,
   votesOpen,
   voteOpensLabel,
 } from './core.js';
@@ -53,6 +54,7 @@ function section(title, extra = '') {
 }
 
 function scoreBoard(match) {
+  if (msUntilVotesOpen(match)) return '';
   return `<div class="score__board">
     <div class="score__side">${teamTag('A')}<b class="score__n">${num(match.goals_a, 0)}</b></div>
     <div class="score__side">${teamTag('B')}<b class="score__n">${num(match.goals_b, 0)}</b></div>
@@ -330,7 +332,7 @@ export async function home() {
                 <span class="mvp__text"><b>${esc(lastDetail.mvp.player.name)}</b><span>MVP del partido</span></span>
                 ${mvpResult(last.id, lastDetail.mvp.score)}
               </div>`
-            : `<p class="score__foot">${esc(outcomeText(last.goals_a, last.goals_b))}</p>`
+            : msUntilVotesOpen(last) ? '' : `<p class="score__foot">${esc(outcomeText(last.goals_a, last.goals_b))}</p>`
         }
       </a>`
     : empty('Aún no hay partidos', 'Cuando el admin cierre el primero, aquí saldrá el resultado y el MVP.');
@@ -490,8 +492,8 @@ function matchRow(m, status = 'Cerrado') {
     <a class="mrow" href="${href('partidos', m.id)}">
       <span class="mrow__date"><b>${esc(d.day)}</b><span>${esc(d.month)}</span></span>
       <span class="mrow__main">
-        <span class="mrow__score">${num(m.goals_a, 0)}<i aria-hidden="true"></i>${num(m.goals_b, 0)}</span>
-        <span class="mrow__sub">${esc(waiting ? `Votación desde el ${voteOpensLabel(m)}` : isOpen ? 'Votación en marcha' : outcomeText(m.goals_a, m.goals_b))}</span>
+        ${msUntilVotesOpen(m) ? '' : `<span class="mrow__score">${num(m.goals_a, 0)}<i aria-hidden="true"></i>${num(m.goals_b, 0)}</span>`}
+        <span class="mrow__sub">${esc(waiting ? `Votación desde el ${voteOpensLabel(m)}` : isOpen ? 'Votación en marcha' : msUntilVotesOpen(m) ? '' : outcomeText(m.goals_a, m.goals_b))}</span>
       </span>
       ${pill(status, isOpen ? 'acid' : '')}
     </a>
@@ -528,6 +530,7 @@ export async function matches() {
 /* ------------------------------------------------------------------ */
 
 function teamBlock(code, rows, goals, detail) {
+  const showGoals = msUntilVotesOpen(detail.summary) === 0;
   const items = rows.length
     ? rows
         .map((row) => {
@@ -541,7 +544,7 @@ function teamBlock(code, rows, goals, detail) {
             ${avatar(p, 44)}
             <span class="lrow__who">
               <b class="lrow__name">${esc(p.name)}</b>
-              <span class="lrow__sub">${esc(plural(row.goals ?? 0, 'gol', 'goles'))}${moves ? ` · ${esc(moves)}` : ''}</span>
+              <span class="lrow__sub">${esc([showGoals ? plural(row.goals ?? 0, 'gol', 'goles') : '', moves].filter(Boolean).join(' · '))}</span>
               ${st.can ? '<span class="pill pill--acid">Falta tu nota</span>' : st.mine != null ? `<span class="pill">Tu nota: ${st.mine}</span>` : ''}
             </span>
             <span class="lrow__end">
@@ -554,7 +557,7 @@ function teamBlock(code, rows, goals, detail) {
     : '<li class="lrow__empty">Sin jugadores</li>';
 
   return `<div class="team">
-    <div class="team__head">${teamTag(code)}<span class="team__goals">${esc(plural(goals ?? 0, 'gol', 'goles'))}</span></div>
+    <div class="team__head">${teamTag(code)}${showGoals ? `<span class="team__goals">${esc(plural(goals ?? 0, 'gol', 'goles'))}</span>` : ''}</div>
     <ul class="lineup">${items}</ul>
   </div>`;
 }
@@ -664,7 +667,7 @@ export async function matchView(id) {
                ? '<p class="hint">El marcador suma todos los tramos; cada tramo cuenta como un resultado distinto para quien lo jugó.</p>'
                : ''
            }
-           ${cutsBlock(detail)}`
+           ${msUntilVotesOpen(summary) ? '' : cutsBlock(detail)}`
         : empty('Sin alineación', 'El admin todavía no ha publicado quién juega este partido.')
     }
   </div>`;

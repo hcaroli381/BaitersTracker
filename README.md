@@ -129,8 +129,7 @@ nota (dos decimales), el MVP lo decide una **votación de desempate**:
 
 ## Equipos y cambios de equipo
 
-Los equipos y los goles se pueden poner **antes, durante y después** del partido, también con el partido
-cerrado.
+Los equipos se pueden preparar desde que se crea el partido. Los goles se anotan a partir de una hora después del inicio programado, también con el partido cerrado.
 
 Si a mitad de partido los equipos están desequilibrados, en **Admin → Partidos → ¿Cambio de equipo?**
 (también dentro del editor de alineación) se elige en **cuántas partes** se divide el partido:

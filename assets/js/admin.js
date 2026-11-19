@@ -19,6 +19,7 @@ import {
   kickoffDate,
   voteOpensLabel,
   votesOpen,
+  msUntilVotesOpen,
   localInputValue,
   localInputToISO,
 } from './core.js';
@@ -373,7 +374,7 @@ function matchesTab(matches) {
           return `<li class="adminrow" data-match="${esc(m.id)}">
             <div class="adminrow__date"><b>${dateParts(m.played_on).day}</b>${dateParts(m.played_on).month}</div>
             <div class="adminrow__who">
-              <span class="adminrow__name">Oscuros ${num(m.goals_a, 0)}, Claros ${num(m.goals_b, 0)}</span>
+              <span class="adminrow__name">${msUntilVotesOpen(m) ? 'Marcador pendiente' : `Oscuros ${num(m.goals_a, 0)}, Claros ${num(m.goals_b, 0)}`}</span>
               <span class="adminrow__meta">
                 <span class="chip ${m.status === 'open' ? 'chip--acid' : 'chip--dim'}">${m.status === 'open' ? 'Abierto' : 'Cerrado'}</span>
                 <span class="chip chip--dim">${esc(kick ? timeLabel(kick) : 'sin hora')}</span>
@@ -594,6 +595,8 @@ async function openLineup(match, opts = {}) {
   const { matchDetail } = await import('./data.js');
   let detail = null;
   let current = 1;
+  let selectedTeam = 'A';
+  const goalDrafts = new Map();
   let savingGoal = false;
   let goalRefreshFailed = false;
   let askSplit = Boolean(opts.askSplit);
@@ -609,6 +612,10 @@ async function openLineup(match, opts = {}) {
         variant: 'btn--acid',
         onClick: () => {
           if (savingGoal || goalRefreshFailed) return;
+          if (goalDrafts.size) {
+            toast('Guarda los goles pendientes antes de cerrar', 'error');
+            return;
+          }
           s.close();
           toast('Alineación guardada');
           rerenderAdmin();
@@ -661,6 +668,7 @@ async function openLineup(match, opts = {}) {
     const total = detail.segmentCount || 1;
     const onPitch = players.filter((p) => idx.has(`${p.id}:${current}`)).length;
     const summary = detail.summary;
+    const canEditGoals = msUntilVotesOpen(summary) === 0;
 
     const tabs =
       total > 1
@@ -683,17 +691,18 @@ async function openLineup(match, opts = {}) {
         return `<li class="lineupEdit__row" data-player="${esc(p.id)}">
             <span class="lineupEdit__name">${esc(p.name)}<b>${p.shirt_number ? pad2(p.shirt_number) : ''}</b>${p.can_vote === false ? '<i class="lineupEdit__tag">comodín</i>' : ''}${moved ? `<i class="lineupEdit__tag lineupEdit__tag--move">ahora ${esc(teamName(st.team))}</i>` : ''}</span>
             <span class="lineupEdit__ctrl">
-              <span class="lineupEdit__teams">
-                <button class="iconbtn${st?.team === 'A' ? ' is-on' : ''}" type="button" data-team="A">${teamName('A')}</button>
-                <button class="iconbtn${st?.team === 'B' ? ' is-on' : ''}" type="button" data-team="B">${teamName('B')}</button>
-                <button class="iconbtn${!st ? ' is-on' : ''}" type="button" data-team="">Fuera</button>
-              </span>
-              <span class="stepper" aria-label="Goles">
-                <button class="iconbtn" type="button" data-goal="-1" aria-label="Quitar un gol">−</button>
-                <b data-goals>${st?.goals ?? 0}</b>
-                <button class="iconbtn" type="button" data-goal="1" aria-label="Añadir un gol">+</button>
-              </span>
-              ${total > 1 && sum > (st?.goals ?? 0) ? `<span class="lineupEdit__sum">total ${sum}</span>` : ''}
+              <button class="iconbtn${st?.team === selectedTeam ? ' is-on' : ''}" type="button"
+                data-team="${st?.team === selectedTeam ? '' : selectedTeam}"
+                aria-label="${esc(st?.team === selectedTeam ? `Quitar a ${p.name} de ${teamName(selectedTeam)}` : `Añadir a ${p.name} a ${teamName(selectedTeam)}`)}">
+                ${st?.team === selectedTeam ? '−' : '+'}
+              </button>
+              ${st ? `<span class="meta">${teamName(st.team)}</span>` : ''}
+              ${canEditGoals && st?.team === selectedTeam ? `<form class="lineupEdit__goals" data-goal-form>
+                <input class="input" type="number" inputmode="numeric" min="0" max="2147483647" step="1" required
+                  aria-label="${esc(`Goles de ${p.name}`)}" value="${esc(goalDrafts.get(`${p.id}:${current}`) ?? st.goals)}">
+                <button class="iconbtn" type="submit">Guardar goles</button>
+              </form>` : ''}
+              ${canEditGoals && total > 1 && sum > (st?.goals ?? 0) ? `<span class="lineupEdit__sum">total ${sum}</span>` : ''}
             </span>
           </li>`;
       })
@@ -703,13 +712,16 @@ async function openLineup(match, opts = {}) {
       ${tabs}
       ${askSplit ? askBlock() : ''}
       <div class="lineupTools">
-        <span class="meta">${total > 1 ? `Tramo ${current} de ${total}` : 'Sin cambios de equipo'}, ${plural(onPitch, 'jugador', 'jugadores')} · Oscuros ${num(summary.goals_a, 0)}–${num(summary.goals_b, 0)} Claros</span>
+        <span class="meta">${total > 1 ? `Tramo ${current} de ${total}` : 'Sin cambios de equipo'}, ${plural(onPitch, 'jugador', 'jugadores')}${canEditGoals ? ` · Oscuros ${num(summary.goals_a, 0)}–${num(summary.goals_b, 0)} Claros` : ''}</span>
         ${askSplit ? '' : `<button class="iconbtn" type="button" data-split>${total > 1 ? '¿Hubo otro cambio?' : '¿Hubo cambio de equipo?'}</button>`}
         ${total > 1 && !askSplit ? '<button class="iconbtn iconbtn--danger" type="button" data-undo title="Deshacer el último cambio de equipo">Deshacer cambio</button>' : ''}
       </div>
-      <p class="hint">Elige equipo y goles de cada uno. Se guarda al instante, también con el partido cerrado.${
-        total > 1 ? ' Cada tramo cuenta como un resultado para quien lo jugó; la nota y el MVP son del partido.' : ''
-      }</p>
+      <div class="seg" role="group" aria-label="Equipo que estás editando">
+        ${['A', 'B'].map((team) => `<button class="seg__btn${selectedTeam === team ? ' is-on' : ''}" type="button"
+          aria-pressed="${selectedTeam === team}" data-select-team="${team}">${teamName(team)}</button>`).join('')}
+      </div>
+      <p class="hint">${canEditGoals ? 'Escribe los goles de cada jugador. El marcador suma los goles de ambos equipos.'
+        : `Podrás anotar los goles el ${esc(voteOpensLabel(summary))}.`}</p>
       <ul class="lineupEdit">${rows}</ul>`;
   };
 
@@ -798,66 +810,58 @@ async function openLineup(match, opts = {}) {
       return;
     }
 
-    const row = ev.target.closest('.lineupEdit__row');
-    if (!row) return;
-    const playerId = row.dataset.player;
+    const teamTab = ev.target.closest('[data-select-team]');
+    if (teamTab) {
+      selectedTeam = teamTab.dataset.selectTeam;
+      render();
+      return;
+    }
+
     const teamBtn = ev.target.closest('[data-team]');
-    const goalBtn = ev.target.closest('[data-goal]');
+    if (!teamBtn) return;
+    const playerId = teamBtn.closest('.lineupEdit__row').dataset.player;
+    await saveLineupChange('admin_set_lineup', playerId, { p_team: teamBtn.dataset.team || null });
+  });
 
+  sheetBody.addEventListener('input', (ev) => {
+    const row = ev.target.closest('[data-goal-form]')?.closest('.lineupEdit__row');
+    if (row) goalDrafts.set(`${row.dataset.player}:${current}`, ev.target.value);
+  });
+
+  sheetBody.addEventListener('submit', async (ev) => {
+    const form = ev.target.closest('[data-goal-form]');
+    if (!form) return;
+    ev.preventDefault();
+    if (savingGoal || goalRefreshFailed || msUntilVotesOpen(detail.summary)) return;
+    const input = form.querySelector('input');
+    if (!input.reportValidity()) return;
+    const playerId = form.closest('.lineupEdit__row').dataset.player;
+    await saveLineupChange('admin_set_goals', playerId, { p_goals: input.valueAsNumber });
+  });
+
+  async function saveLineupChange(rpc, playerId, params) {
+    savingGoal = true;
+    const controls = sheetBody.querySelectorAll('button:enabled, input:enabled');
+    saveButton.disabled = true;
+    controls.forEach((control) => { control.disabled = true; });
     try {
-      if (teamBtn) {
-        await adminRpc('admin_set_lineup', {
-          p_pw: pw,
-          p_match: match.id,
-          p_player: playerId,
-          p_team: teamBtn.dataset.team || null,
-          p_segment: current,
-        });
-        await reload();
-      }
-
-      if (goalBtn) {
-        const st = stintIndex().get(`${playerId}:${current}`);
-        if (!st) {
-          toast('Asigna equipo antes de poner goles', 'error');
-          return;
-        }
-        const next = Math.max(0, (st.goals || 0) + Number(goalBtn.dataset.goal));
-        if (next === st.goals) return;
-
-        savingGoal = true;
-        const controls = sheetBody.querySelectorAll('button:enabled');
-        saveButton.disabled = true;
-        controls.forEach((button) => { button.disabled = true; });
-        try {
-          await adminRpc('admin_set_goals', {
-            p_pw: pw,
-            p_match: match.id,
-            p_player: playerId,
-            p_goals: next,
-            p_segment: current,
-          });
-        } catch (e) {
-          toast(errorMessage(e), 'error');
-        } finally {
-          // Incluso tras un fallo de red, el servidor puede haber guardado el gol.
-          try {
-            await reload();
-          } catch {
-            goalRefreshFailed = true;
-            sheetBody.innerHTML = `<p class="formerr" role="status">No se pudo confirmar el marcador. Actualízalo antes de seguir editando.</p>
-              <button class="btn btn--ghost btn--sm" type="button" data-reload-lineup>Actualizar marcador</button>`;
-          } finally {
-            savingGoal = false;
-            saveButton.disabled = goalRefreshFailed;
-            controls.forEach((button) => { button.disabled = false; });
-          }
-        }
-      }
+      await adminRpc(rpc, { p_pw: pw, p_match: match.id, p_player: playerId, p_segment: current, ...params });
+      goalDrafts.delete(`${playerId}:${current}`);
     } catch (e) {
       toast(errorMessage(e), 'error');
+    } finally {
+      try {
+        await reload();
+      } catch {
+        goalRefreshFailed = true;
+        sheetBody.innerHTML = `<p class="formerr" role="status">No se pudo confirmar la alineación. Actualízala antes de seguir editando.</p>
+          <button class="btn btn--ghost btn--sm" type="button" data-reload-lineup>Actualizar alineación</button>`;
+      } finally {
+        savingGoal = false;
+        saveButton.disabled = goalRefreshFailed;
+      }
     }
-  });
+  }
 }
 
 /* ------------------------------------------------------------------ */

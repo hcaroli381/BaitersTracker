@@ -32,6 +32,7 @@ const MIGRATIONS = [
   'supabase/migrations/20261106_07_device_hash_consistency.sql',
   'supabase/migrations/20261109_08_segment_results.sql',
   'supabase/migrations/20261109_09_free_claim.sql',
+  'supabase/migrations/20261119_10_goal_window.sql',
 ];
 
 const ADMIN = 'admin';
@@ -76,6 +77,28 @@ async function rejects(promise, pattern) {
 /* ------------------------------------------------------------------ */
 /* 1. Ventana de votación                                              */
 /* ------------------------------------------------------------------ */
+
+test('admin: la alineación se puede preparar y los goles se guardan a partir de la hora exacta', async () => {
+  const db = await freshDb();
+  try {
+    const a = await addPlayer(db, 'Ana');
+    const b = await addPlayer(db, 'Bruno');
+    const match = await createMatch(db, { kickoff: new Date().toISOString() });
+    await db.query(`select public.admin_set_lineup($1,$2,$3,'A')`, [ADMIN, match, a]);
+    await db.query(`select public.admin_set_lineup($1,$2,$3,'B')`, [ADMIN, match, b]);
+    await rejects(db.query(`select public.admin_set_goals($1,$2,$3,11)`, [ADMIN, match, a]), /una hora después/);
+
+    await db.transaction(async (tx) => {
+      await tx.query(`update public.matches set kickoff_at = now() - interval '1 hour' where id = $1`, [match]);
+      await tx.query(`select public.admin_set_goals($1,$2,$3,11)`, [ADMIN, match, a]);
+      await tx.query(`select public.admin_set_goals($1,$2,$3,12)`, [ADMIN, match, b]);
+      const score = await tx.query(`select goals_a, goals_b from public.match_summary where id = $1`, [match]);
+      assert.deepEqual(score.rows, [{ goals_a: 11, goals_b: 12 }]);
+    });
+  } finally {
+    await db.close();
+  }
+});
 
 test('cast_vote: no se vota hasta una hora después del inicio', async () => {
   const db = await freshDb();
