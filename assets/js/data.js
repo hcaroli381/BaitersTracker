@@ -2,6 +2,7 @@ import { sb, state, deviceToken, photoURL } from './core.js';
 import { getConfig } from './config.js';
 import {
   groupAppearances,
+  hasMatchResult,
   segmentTeams,
   segmentCount,
   scoreFromAppearances,
@@ -274,9 +275,10 @@ export async function playerHistory(playerId) {
   }
   if (error) throw error;
 
-  const dates = new Map(state.matches.map((m) => [m.id, m.played_on]));
+  const dates = new Map(state.matches.filter(hasMatchResult).map((m) => [m.id, m.played_on]));
   return (data || [])
-    .map((row) => ({ ...row, played_on: dates.get(row.match_id) || null }))
+    .filter((row) => dates.has(row.match_id))
+    .map((row) => ({ ...row, played_on: dates.get(row.match_id) }))
     .sort((a, b) => (String(a.played_on) < String(b.played_on) ? 1 : -1));
 }
 

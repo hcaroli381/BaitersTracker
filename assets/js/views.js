@@ -26,6 +26,7 @@ import {
   voteOpensLabel,
   voteOpensDate,
 } from './core.js';
+import { hasMatchResult } from './rules.js';
 import {
   sortedBy,
   rawValue,
@@ -55,7 +56,7 @@ function section(title, extra = '') {
 }
 
 function scoreBoard(match) {
-  if (msUntilVotesOpen(match)) return '';
+  if (!hasMatchResult(match) || msUntilVotesOpen(match)) return '';
   return `<div class="score__board">
     <div class="score__side">${teamTag('A')}<b class="score__n">${num(match.goals_a, 0)}</b></div>
     <div class="score__side">${teamTag('B')}<b class="score__n">${num(match.goals_b, 0)}</b></div>
@@ -348,7 +349,7 @@ export async function home() {
                 <span class="mvp__text"><b>${esc(lastDetail.mvp.player.name)}</b><span>MVP del partido</span></span>
                 ${mvpResult(last.id, lastDetail.mvp.score)}
               </div>`
-            : msUntilVotesOpen(last) ? '' : `<p class="score__foot">${esc(outcomeText(last.goals_a, last.goals_b))}</p>`
+            : !hasMatchResult(last) || msUntilVotesOpen(last) ? '' : `<p class="score__foot">${esc(outcomeText(last.goals_a, last.goals_b))}</p>`
         }
       </a>`
     : empty('Aún no hay partidos', 'Cuando el admin cierre el primero, aquí saldrá el resultado y el MVP.');
@@ -427,11 +428,11 @@ function sortText(player, key) {
 
 function boardHTML(key, dir) {
   const needsData = key === 'rating' || key === 'conceded';
-  const rows = sortedBy(key, dir).filter((p) => (needsData ? (p.stats?.played || 0) > 0 : true));
+  const rows = sortedBy(key, dir).filter((p) => p.stats?.played > 0 && (!needsData || rawValue(p, key) != null));
   if (!rows.length) {
     return empty(
-      needsData ? 'Todavía no hay datos' : 'Sin jugadores',
-      needsData ? 'Aparecerá cuando haya partidos con resultado.' : 'El admin puede añadir jugadores desde Admin.'
+      'Todavía no hay datos',
+      'Aparecerán cuando haya partidos con resultado.'
     );
   }
 
@@ -558,8 +559,8 @@ function matchRow(m, status = 'Cerrado') {
     <a class="mrow" href="${href('partidos', m.id)}">
       <span class="mrow__date"><b>${esc(d.day)}</b><span>${esc(d.month)}</span></span>
       <span class="mrow__main">
-        ${msUntilVotesOpen(m) ? '' : `<span class="mrow__score">${num(m.goals_a, 0)}<i aria-hidden="true"></i>${num(m.goals_b, 0)}</span>`}
-        <span class="mrow__sub">${esc(waiting ? `Votación desde el ${voteOpensLabel(m)}` : isOpen ? 'Votación en marcha' : msUntilVotesOpen(m) ? '' : outcomeText(m.goals_a, m.goals_b))}</span>
+        ${!hasMatchResult(m) || msUntilVotesOpen(m) ? '' : `<span class="mrow__score">${num(m.goals_a, 0)}<i aria-hidden="true"></i>${num(m.goals_b, 0)}</span>`}
+        <span class="mrow__sub">${esc(waiting ? `Votación desde el ${voteOpensLabel(m)}` : isOpen ? 'Votación en marcha' : !hasMatchResult(m) || msUntilVotesOpen(m) ? '' : outcomeText(m.goals_a, m.goals_b))}</span>
       </span>
       ${pill(status, isOpen ? 'acid' : '')}
     </a>
@@ -596,7 +597,7 @@ export async function matches() {
 /* ------------------------------------------------------------------ */
 
 function teamBlock(code, rows, goals, detail) {
-  const showGoals = msUntilVotesOpen(detail.summary) === 0;
+  const showGoals = hasMatchResult(detail.summary) && msUntilVotesOpen(detail.summary) === 0;
   const items = rows.length
     ? rows
         .map((row) => {
@@ -733,7 +734,7 @@ export async function matchView(id) {
                ? '<p class="hint">El marcador suma todos los tramos; cada tramo cuenta como un resultado distinto para quien lo jugó.</p>'
                : ''
            }
-           ${msUntilVotesOpen(summary) ? '' : cutsBlock(detail)}`
+           ${!hasMatchResult(summary) || msUntilVotesOpen(summary) ? '' : cutsBlock(detail)}`
         : empty('Sin alineación', 'El admin todavía no ha publicado quién juega este partido.')
     }
   </div>`;

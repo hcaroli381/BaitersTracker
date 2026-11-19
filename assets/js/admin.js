@@ -23,6 +23,7 @@ import {
   localInputValue,
   localInputToISO,
 } from './core.js';
+import { hasMatchResult } from './rules.js';
 import { KEYS } from './config.js';
 import {
   adminRpc,
@@ -374,7 +375,7 @@ function matchesTab(matches) {
           return `<li class="adminrow" data-match="${esc(m.id)}">
             <div class="adminrow__date"><b>${dateParts(m.played_on).day}</b>${dateParts(m.played_on).month}</div>
             <div class="adminrow__who">
-              <span class="adminrow__name">${msUntilVotesOpen(m) ? 'Marcador pendiente' : `Oscuros ${num(m.goals_a, 0)}, Claros ${num(m.goals_b, 0)}`}</span>
+              <span class="adminrow__name">${!hasMatchResult(m) || msUntilVotesOpen(m) ? 'Marcador pendiente' : `Oscuros ${num(m.goals_a, 0)}, Claros ${num(m.goals_b, 0)}`}</span>
               <span class="adminrow__meta">
                 <span class="chip ${m.status === 'open' ? 'chip--acid' : 'chip--dim'}">${m.status === 'open' ? 'Abierto' : 'Cerrado'}</span>
                 <span class="chip chip--dim">${esc(kick ? timeLabel(kick) : 'sin hora')}</span>
@@ -727,7 +728,7 @@ async function openLineup(match, opts = {}) {
       ${tabs}
       ${askSplit ? askBlock() : ''}
       <div class="lineupTools">
-        <span class="meta">${total > 1 ? `Tramo ${current} de ${total}` : 'Sin cambios de equipo'}, ${plural(onPitch, 'jugador', 'jugadores')}${canEditGoals ? ` · Oscuros ${num(summary.goals_a, 0)}–${num(summary.goals_b, 0)} Claros` : ''}</span>
+        <span class="meta">${total > 1 ? `Tramo ${current} de ${total}` : 'Sin cambios de equipo'}, ${plural(onPitch, 'jugador', 'jugadores')}${canEditGoals && hasMatchResult(summary) ? ` · Oscuros ${num(summary.goals_a, 0)}–${num(summary.goals_b, 0)} Claros` : ''}</span>
         ${askSplit ? '' : `<button class="iconbtn" type="button" data-split>${total > 1 ? '¿Hubo otro cambio?' : '¿Hubo cambio de equipo?'}</button>`}
         ${total > 1 && !askSplit ? '<button class="iconbtn iconbtn--danger" type="button" data-undo title="Deshacer el último cambio de equipo">Deshacer cambio</button>' : ''}
       </div>

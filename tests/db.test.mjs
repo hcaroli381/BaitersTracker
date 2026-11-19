@@ -33,6 +33,7 @@ const MIGRATIONS = [
   'supabase/migrations/20261109_08_segment_results.sql',
   'supabase/migrations/20261109_09_free_claim.sql',
   'supabase/migrations/20261119_10_goal_window.sql',
+  'supabase/migrations/20261119_11_recorded_results.sql',
 ];
 
 const ADMIN = 'admin';
@@ -227,6 +228,27 @@ test('mover el día conserva la hora del partido', async () => {
 /* 2. Equipos cuando quiera                                            */
 /* ------------------------------------------------------------------ */
 
+test('una alineación sin marcador no cuenta, pero un 0–0 guardado sí', async () => {
+  const db = await freshDb();
+  try {
+    const player = await addPlayer(db, 'Ana');
+    const played = await createMatch(db, { kickoff: '2026-11-05T19:00:00Z' });
+    const pending = await createMatch(db, { kickoff: '2026-11-06T19:00:00Z' });
+    await db.query(`select public.admin_set_lineup($1,$2,$3,'A')`, [ADMIN, played, player]);
+    await db.query(`select public.admin_set_lineup($1,$2,$3,'B')`, [ADMIN, pending, player]);
+
+    const stats = () => db.query(`select played, conceded_pm::float8 from public.player_stats where id = $1`, [player]);
+    assert.deepEqual((await stats()).rows, [{ played: 0, conceded_pm: null }]);
+
+    await db.query(`select public.admin_set_goals($1,$2,$3,0)`, [ADMIN, played, player]);
+    assert.deepEqual((await stats()).rows, [{ played: 1, conceded_pm: 0 }]);
+    const summary = await db.query(`select result_recorded from public.match_summary where id = $1`, [played]);
+    assert.equal(summary.rows[0].result_recorded, true);
+  } finally {
+    await db.close();
+  }
+});
+
 test('los equipos se pueden poner antes, durante y después del partido', async () => {
   const db = await freshDb();
   const a = await addPlayer(db, 'Ana');
@@ -234,7 +256,7 @@ test('los equipos se pueden poner antes, durante y después del partido', async 
 
   const future = await createMatch(db, { kickoff: new Date(Date.now() + 48 * 3600_000).toISOString() });
   await db.query(`select public.admin_set_lineup($1,$2,$3,'A')`, [ADMIN, future, a]);
-  await db.query(`select public.admin_set_goals($1,$2,$3,2::smallint)`, [ADMIN, future, a]);
+  await rejects(db.query(`select public.admin_set_goals($1,$2,$3,2::smallint)`, [ADMIN, future, a]), /una hora después/);
 
   const closed = await createMatch(db, { kickoff: new Date(Date.now() - 72 * 3600_000).toISOString() });
   await db.query(`select public.admin_set_match_status($1,$2,'closed')`, [ADMIN, closed]);
@@ -246,7 +268,7 @@ test('los equipos se pueden poner antes, durante y después del partido', async 
   );
   assert.equal(rows.rows.length, 2);
   const futureRow = rows.rows.find((r) => r.match_id === future);
-  assert.deepEqual({ team: futureRow.team, goals: futureRow.goals }, { team: 'A', goals: 2 });
+  assert.deepEqual({ team: futureRow.team, goals: futureRow.goals }, { team: 'A', goals: 0 });
   const closedRow = rows.rows.find((r) => r.match_id === closed);
   assert.deepEqual({ team: closedRow.team, goals: closedRow.goals }, { team: 'B', goals: 3 });
   await db.close();

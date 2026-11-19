@@ -49,6 +49,11 @@ export function votesOpen(match, now = new Date()) {
   return now.getTime() >= opens.getTime();
 }
 
+/** La alineación se puede publicar antes que el marcador. */
+export function hasMatchResult(match) {
+  return match.result_recorded ?? (match.status === 'closed' || match.goals_a > 0 || match.goals_b > 0);
+}
+
 /** Milisegundos que faltan para que abra la votación (0 si ya está abierta). */
 export function msUntilVotesOpen(match, now = new Date()) {
   const opens = voteOpensDate(match);
