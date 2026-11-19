@@ -20,6 +20,7 @@ import {
   toast,
   errorMessage,
   href,
+  kickoffDate,
   votesOpen,
   voteOpensLabel,
 } from './core.js';
@@ -291,7 +292,7 @@ export async function home() {
   if (next && !votesOpen(next)) {
     todo = `<a class="todo todo--quiet" href="${href('partidos', next.id)}">
       <span class="todo__text">
-        <b>La votación todavía no está abierta</b>
+        <b>${kickoffDate(next) > new Date() ? 'Próximo partido' : 'Votación pendiente'}</b>
         <span>Abre el ${esc(voteOpensLabel(next))}, una hora después del inicio</span>
       </span>
       <span class="btn btn--ghost btn--sm">Ver</span>
@@ -308,7 +309,7 @@ export async function home() {
   } else if (next) {
     todo = `<a class="todo todo--quiet" href="${href('partidos', next.id)}">
       <span class="todo__text">
-        <b>Partido abierto</b>
+        <b>Votación abierta</b>
         <span>${esc(shortDate(next.played_on))}${progress ? ', ya has votado a todos' : ''}</span>
       </span>
       <span class="btn btn--ghost btn--sm">Ver</span>
@@ -362,7 +363,7 @@ export async function home() {
       ${
         recent.length
           ? `<section>${section('Últimos resultados', `<a class="more" href="${href('partidos')}">Todos</a>`)}
-             <ol class="mlist">${recent.map(matchRow).join('')}</ol></section>`
+             <ol class="mlist">${recent.map((m) => matchRow(m)).join('')}</ol></section>`
           : ''
       }
     </div>
@@ -475,30 +476,48 @@ export async function ranking() {
 /* Partidos                                                            */
 /* ------------------------------------------------------------------ */
 
-function matchRow(m) {
+function matchStatus(match, now) {
+  if (match.status === 'closed') return 'Cerrado';
+  if (votesOpen(match, now)) return 'Votación abierta';
+  return kickoffDate(match) > now ? 'Próximo partido' : 'Votación pendiente';
+}
+
+function matchRow(m, status = 'Cerrado') {
   const d = dateParts(m.played_on);
-  const isOpen = m.status === 'open';
+  const isOpen = status === 'Votación abierta';
+  const waiting = m.status === 'open' && !isOpen;
   return `<li>
     <a class="mrow" href="${href('partidos', m.id)}">
       <span class="mrow__date"><b>${esc(d.day)}</b><span>${esc(d.month)}</span></span>
       <span class="mrow__main">
         <span class="mrow__score">${num(m.goals_a, 0)}<i aria-hidden="true"></i>${num(m.goals_b, 0)}</span>
-        <span class="mrow__sub">${esc(isOpen ? 'Votación en marcha' : outcomeText(m.goals_a, m.goals_b))}</span>
+        <span class="mrow__sub">${esc(waiting ? `Votación desde el ${voteOpensLabel(m)}` : isOpen ? 'Votación en marcha' : outcomeText(m.goals_a, m.goals_b))}</span>
       </span>
-      ${pill(isOpen ? 'Abierto' : 'Cerrado', isOpen ? 'acid' : '')}
+      ${pill(status, isOpen ? 'acid' : '')}
     </a>
   </li>`;
 }
 
 export async function matches() {
-  const open = state.matches.filter((m) => m.status === 'open');
-  const closed = state.matches.filter((m) => m.status === 'closed');
+  const now = new Date();
+  const groups = new Map([
+    ['Próximo partido', []],
+    ['Votación abierta', []],
+    ['Votación pendiente', []],
+    ['Cerrado', []],
+  ]);
+  for (const match of state.matches) groups.get(matchStatus(match, now)).push(match);
+  groups.get('Próximo partido').sort((a, b) => kickoffDate(a) - kickoffDate(b));
 
   const html = `<div class="view">
     ${pageTitle('Partidos', state.matches.length ? plural(state.matches.length, 'partido registrado', 'partidos registrados') : '')}
-    ${open.length ? `${section('Votación abierta')}<ol class="mlist">${open.map(matchRow).join('')}</ol>` : ''}
-    ${closed.length ? `${section('Cerrados')}<ol class="mlist">${closed.map(matchRow).join('')}</ol>` : ''}
-    ${!open.length && !closed.length ? empty('Todavía no hay partidos', 'El admin los crea desde la pestaña Admin.') : ''}
+    ${[...groups].filter(([, rows]) => rows.length).map(([status, rows]) => {
+      const title = status === 'Cerrado' ? 'Cerrados'
+        : status === 'Próximo partido' ? (rows.length === 1 ? status : 'Próximos partidos')
+        : status;
+      return `${section(title)}<ol class="mlist">${rows.map((m) => matchRow(m, status)).join('')}</ol>`;
+    }).join('')}
+    ${!state.matches.length ? empty('Todavía no hay partidos', 'El admin los crea desde la pestaña Admin.') : ''}
   </div>`;
 
   return { html, mount() {} };
@@ -585,8 +604,9 @@ export async function matchView(id) {
   }
 
   const { summary, lineup, mvp } = detail;
-  const open = summary.status === 'open';
-  const waiting = open && !votesOpen(summary);
+  const status = matchStatus(summary, new Date());
+  const open = status === 'Votación abierta';
+  const waiting = summary.status === 'open' && !open;
   const prog = voteProgress(detail);
   const pct = prog && prog.total ? Math.round((prog.done / prog.total) * 100) : 0;
 
@@ -596,7 +616,7 @@ export async function matchView(id) {
     <section class="score score--static">
       <div class="score__top">
         <span class="score__date">${esc(longDate(summary.played_on))}</span>
-        ${pill(open ? 'Votación abierta' : 'Cerrado', open ? 'acid' : '')}
+        ${pill(status, open ? 'acid' : '')}
       </div>
       ${scoreBoard(summary)}
       ${
