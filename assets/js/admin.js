@@ -596,6 +596,7 @@ async function openLineup(match, opts = {}) {
   let detail = null;
   let current = 1;
   let selectedTeam = 'A';
+  let playerSearch = '';
   const goalDrafts = new Map();
   let savingGoal = false;
   let goalRefreshFailed = false;
@@ -627,6 +628,20 @@ async function openLineup(match, opts = {}) {
   const sheetBody = s.el.querySelector('.sheet__body');
   const saveButton = s.el.querySelector('.sheet__foot .btn--acid');
   const players = state.players.filter((p) => p.active !== false);
+
+  const normalizeName = (value) => value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+  const playerNames = new Map(players.map((player) => [player.id, normalizeName(player.name)]));
+
+  const filterPlayers = () => {
+    const query = normalizeName(playerSearch.trim());
+    let hasMatches = false;
+    for (const row of sheetBody.querySelectorAll('.lineupEdit__row')) {
+      const matches = playerNames.get(row.dataset.player).includes(query);
+      row.style.display = matches ? '' : 'none';
+      hasMatches ||= matches;
+    }
+    sheetBody.querySelector('[data-player-search-empty]').hidden = hasMatches;
+  };
 
   /** Equipo y goles de cada jugador en cada tramo. */
   const stintIndex = () => {
@@ -722,7 +737,13 @@ async function openLineup(match, opts = {}) {
       </div>
       <p class="hint">${canEditGoals ? 'Escribe los goles de cada jugador. El marcador suma los goles de ambos equipos.'
         : `Podrás anotar los goles el ${esc(voteOpensLabel(summary))}.`}</p>
-      <ul class="lineupEdit">${rows}</ul>`;
+      <label class="field">
+        <span class="field__label">Buscar jugador por nombre</span>
+        <input class="input" type="search" data-player-search value="${esc(playerSearch)}" aria-controls="lineupPlayers">
+      </label>
+      <p class="hint" data-player-search-empty role="status" hidden>No se encontraron jugadores.</p>
+      <ul class="lineupEdit" id="lineupPlayers">${rows}</ul>`;
+    filterPlayers();
   };
 
   const reload = async (segment) => {
@@ -824,6 +845,12 @@ async function openLineup(match, opts = {}) {
   });
 
   sheetBody.addEventListener('input', (ev) => {
+    if (ev.target.matches('[data-player-search]')) {
+      playerSearch = ev.target.value;
+      filterPlayers();
+      return;
+    }
+
     const row = ev.target.closest('[data-goal-form]')?.closest('.lineupEdit__row');
     if (row) goalDrafts.set(`${row.dataset.player}:${current}`, ev.target.value);
   });
