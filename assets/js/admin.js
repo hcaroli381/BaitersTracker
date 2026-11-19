@@ -709,7 +709,7 @@ async function openLineup(match, opts = {}) {
               <button class="iconbtn${st?.team === selectedTeam ? ' is-on' : ''}" type="button"
                 data-team="${st?.team === selectedTeam ? '' : selectedTeam}"
                 aria-label="${esc(st?.team === selectedTeam ? `Quitar a ${p.name} de ${teamName(selectedTeam)}` : `Añadir a ${p.name} a ${teamName(selectedTeam)}`)}">
-                ${st?.team === selectedTeam ? '−' : '+'}
+                <span class="lineupEdit__team-symbol" aria-hidden="true">${st?.team === selectedTeam ? '−' : '+'}</span>
               </button>
               ${st ? `<span class="meta">${teamName(st.team)}</span>` : ''}
               ${canEditGoals && st?.team === selectedTeam ? `<form class="lineupEdit__goals" data-goal-form>
@@ -868,17 +868,23 @@ async function openLineup(match, opts = {}) {
 
   async function saveLineupChange(rpc, playerId, params) {
     savingGoal = true;
+    let saved = false;
     const controls = sheetBody.querySelectorAll('button:enabled, input:enabled');
     saveButton.disabled = true;
     controls.forEach((control) => { control.disabled = true; });
     try {
       await adminRpc(rpc, { p_pw: pw, p_match: match.id, p_player: playerId, p_segment: current, ...params });
+      saved = true;
       goalDrafts.delete(`${playerId}:${current}`);
     } catch (e) {
       toast(errorMessage(e), 'error');
     } finally {
       try {
         await reload();
+        if (saved && params.p_team) {
+          const row = sheetBody.querySelector(`.lineupEdit__row[data-player="${CSS.escape(playerId)}"]`);
+          row?.querySelector('.is-on[data-team] .lineupEdit__team-symbol')?.classList.add('lineupEdit__team-symbol--added');
+        }
       } catch {
         goalRefreshFailed = true;
         sheetBody.innerHTML = `<p class="formerr" role="status">No se pudo confirmar la alineación. Actualízala antes de seguir editando.</p>

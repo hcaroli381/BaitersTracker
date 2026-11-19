@@ -24,6 +24,7 @@ import {
   msUntilVotesOpen,
   votesOpen,
   voteOpensLabel,
+  voteOpensDate,
 } from './core.js';
 import {
   sortedBy,
@@ -76,7 +77,7 @@ function celebrateMvp(root) {
   const picture = root.querySelector('[data-mvp-reaction]');
   const matchId = picture?.dataset.mvpReaction;
   const motion = '(prefers-reduced-motion: no-preference)';
-  if (!matchId || celebratedMatches.has(matchId) || !window.matchMedia(motion).matches) return;
+  if (!matchId || celebratedMatches.has(matchId) || !motionEnabled()) return;
 
   celebratedMatches.add(matchId);
   const animation = document.createElement('source');
@@ -84,6 +85,20 @@ function celebrateMvp(root) {
   animation.type = 'image/webp';
   animation.srcset = 'assets/img/duende-carcajada.webp';
   picture.prepend(animation);
+}
+
+function motionEnabled() {
+  return window.matchMedia('(prefers-reduced-motion: no-preference)').matches;
+}
+
+const shownResults = new Map();
+const shownVoting = new Set();
+
+function showVotingOpened(root, match) {
+  const target = root.querySelector('[data-voting-open]');
+  if (!target || shownVoting.has(match.id)) return;
+  shownVoting.add(match.id);
+  if (motionEnabled()) target.classList.add('is-voting-new');
 }
 
 function empty(title, text) {
@@ -290,8 +305,9 @@ export async function home() {
   const progress = nextDetail ? voteProgress(nextDetail) : null;
   const best = sortedBy('rating').filter((p) => (p.stats?.played || 0) > 0 && p.stats.avg_rating != null).slice(0, 5);
 
+  const waiting = next && !votesOpen(next);
   let todo = '';
-  if (next && !votesOpen(next)) {
+  if (waiting) {
     todo = `<a class="todo todo--quiet" href="${href('partidos', next.id)}">
       <span class="todo__text">
         <b>${kickoffDate(next) > new Date() ? 'Próximo partido' : 'Votación pendiente'}</b>
@@ -306,7 +322,7 @@ export async function home() {
         <b>${left === 1 ? 'Te falta 1 nota' : `Te faltan ${left} notas`}</b>
         <span>Partido del ${esc(shortDate(next.played_on))}</span>
       </span>
-      <span class="btn btn--acid btn--sm">Votar</span>
+      <span class="btn btn--acid btn--sm" data-voting-open>Votar</span>
     </a>`;
   } else if (next) {
     todo = `<a class="todo todo--quiet" href="${href('partidos', next.id)}">
@@ -371,7 +387,23 @@ export async function home() {
     </div>
   </div>`;
 
-  return { html, stale, mount: celebrateMvp };
+  return {
+    html,
+    stale,
+    refreshAt: waiting ? voteOpensDate(next)?.getTime() : null,
+    mount(root) {
+      if (next) showVotingOpened(root, next);
+      const board = root.querySelector('.score__board');
+      if (last && board) {
+        const result = `${last.goals_a}:${last.goals_b}`;
+        if (shownResults.get(last.id) !== result) {
+          shownResults.set(last.id, result);
+          if (motionEnabled()) board.classList.add('is-result-new');
+        }
+      }
+      celebrateMvp(root);
+    },
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -456,20 +488,54 @@ export async function ranking() {
     <div id="boardSlot">${boardHTML(first.key, first.dir)}</div>
   </div>`;
 
+  let previousOrder;
+  let previousSort;
+  const rows = (slot) => [...slot.querySelectorAll('a.champ, a.prow')];
+  const snapshot = (slot) => new Map(rows(slot).map((row) => [
+    row.getAttribute('href'), row.getBoundingClientRect().top,
+  ]));
+  const moveRows = (slot, previous) => {
+    if (!previous || !motionEnabled()) return;
+    for (const row of rows(slot)) {
+      const top = previous.get(row.getAttribute('href'));
+      const position = row.getBoundingClientRect();
+      if (top == null || position.bottom <= 0 || position.top >= window.innerHeight) continue;
+      const offset = Math.max(-160, Math.min(160, top - position.top));
+      if (Math.abs(offset) < 1) continue;
+      row.animate?.([{ transform: `translateY(${offset}px)` }, { transform: 'translateY(0)' }],
+        { duration: 230, easing: 'ease-out' });
+    }
+  };
+
   return {
     html,
+    beforePaint(root) {
+      const slot = root.querySelector('#boardSlot');
+      if (!slot) return;
+      previousSort = root.querySelector('[data-sort].is-on')?.dataset.sort;
+      if (motionEnabled()) previousOrder = snapshot(slot);
+    },
     mount(root) {
       const slot = root.querySelector('#boardSlot');
-      const buttons = [...root.querySelectorAll('.seg__btn')];
-      buttons.forEach((btn) => {
+      const buttons = [...root.querySelectorAll('[data-sort]')];
+      const applySort = (btn) => {
+        for (const button of buttons) {
+          button.classList.toggle('is-on', button === btn);
+          button.setAttribute('aria-selected', String(button === btn));
+        }
+        slot.innerHTML = boardHTML(btn.dataset.sort, btn.dataset.dir);
+      };
+      const active = buttons.find((btn) => btn.dataset.sort === previousSort);
+      if (active && previousSort !== first.key) applySort(active);
+      moveRows(slot, previousOrder);
+      for (const btn of buttons) {
         btn.addEventListener('click', () => {
-          buttons.forEach((b) => {
-            b.classList.toggle('is-on', b === btn);
-            b.setAttribute('aria-selected', String(b === btn));
-          });
-          slot.innerHTML = boardHTML(btn.dataset.sort, btn.dataset.dir);
+          if (btn.classList.contains('is-on')) return;
+          const previous = motionEnabled() ? snapshot(slot) : null;
+          applySort(btn);
+          moveRows(slot, previous);
         });
-      });
+      }
     },
   };
 }
@@ -545,7 +611,7 @@ function teamBlock(code, rows, goals, detail) {
             <span class="lrow__who">
               <b class="lrow__name">${esc(p.name)}</b>
               <span class="lrow__sub">${esc([showGoals ? plural(row.goals ?? 0, 'gol', 'goles') : '', moves].filter(Boolean).join(' · '))}</span>
-              ${st.can ? '<span class="pill pill--acid">Falta tu nota</span>' : st.mine != null ? `<span class="pill">Tu nota: ${st.mine}</span>` : ''}
+              ${st.can ? '<span class="pill pill--acid">Falta tu nota</span>' : st.mine != null ? `<span class="pill" data-vote-saved><span aria-hidden="true">✓</span> Tu nota: ${st.mine}</span>` : ''}
             </span>
             <span class="lrow__end">
               ${rateBadge(row.avg_score)}
@@ -619,7 +685,7 @@ export async function matchView(id) {
     <section class="score score--static">
       <div class="score__top">
         <span class="score__date">${esc(longDate(summary.played_on))}</span>
-        ${pill(status, open ? 'acid' : '')}
+        ${open ? '<span class="pill pill--acid" data-voting-open>Votación abierta</span>' : pill(status)}
       </div>
       ${scoreBoard(summary)}
       ${
@@ -674,14 +740,29 @@ export async function matchView(id) {
 
   return {
     html,
+    refreshAt: waiting ? voteOpensDate(summary)?.getTime() : null,
     mount(root) {
+      showVotingOpened(root, summary);
       celebrateMvp(root);
-      const refresh = async () => {
+      const currentView = root.firstElementChild;
+      const refresh = async (votedPlayerId) => {
         try {
           await loadCore();
           const next = await matchView(id);
+          if (!currentView?.isConnected) return;
           root.innerHTML = next.html;
           next.mount(root);
+          if (!votedPlayerId || !motionEnabled()) return;
+          const player = [...root.querySelectorAll('[data-player]')]
+            .find((row) => row.dataset.player === votedPlayerId);
+          player?.querySelector('[data-vote-saved]')?.classList.add('is-vote-new');
+          const progress = root.querySelector('.prog__bar i');
+          if (progress && prog) {
+            progress.animate?.([
+              { transform: `scaleX(${pct / 100})` },
+              { transform: `scaleX(${progress.style.getPropertyValue('--p')})` },
+            ], { duration: 260, easing: 'ease-out' });
+          }
         } catch (err) {
           toast(errorMessage(err), 'error');
         }
@@ -771,7 +852,7 @@ function openPlayerSheet(detail, row, refresh) {
                 await castVote(detail.summary.id, p.id, chosen);
                 s.close();
                 toast('Nota guardada', 'vote');
-                refresh();
+                refresh(p.id);
               } catch (err) {
                 toast(errorMessage(err), 'error');
                 btn.disabled = false;

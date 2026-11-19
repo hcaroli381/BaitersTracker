@@ -50,3 +50,96 @@
     animation-timing-function: var(--ease);
   }
 }
+
+@media (prefers-reduced-motion: no-preference) {
+  .score__board.is-result-new {
+    animation: result-roll 0.32s var(--ease);
+  }
+
+  .is-voting-new {
+    position: relative;
+  }
+
+  .is-voting-new::after {
+    position: absolute;
+    inset: -3px;
+    border: 1px solid var(--acid);
+    border-radius: inherit;
+    content: '';
+    pointer-events: none;
+    animation: voting-ring 0.55s ease-out both;
+  }
+
+  .is-vote-new {
+    animation: vote-confirm 0.22s var(--ease);
+  }
+
+  .is-profile-entering {
+    animation: board-in 0.18s var(--ease);
+  }
+
+  ::view-transition-group(player-photo) {
+    animation-duration: 0.22s;
+    animation-timing-function: var(--ease);
+  }
+}
+
+[data-vote-saved] {
+  gap: 4px;
+}
+
+@keyframes result-roll {
+  from {
+    opacity: 0.5;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes voting-ring {
+  from {
+    opacity: 0.85;
+    transform: scale(0.99);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(1.07);
+  }
+}
+
+@keyframes vote-confirm {
+  from {
+    opacity: 0.6;
+    transform: scale(0.94);
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  :is(a.score, .todo, .mrow, .scard, .lrow, .seg__btn, .dock__item):active {
+    background-color: var(--s3);
+  }
+
+  .lineupEdit__ctrl > [data-team] {
+    min-width: 44px;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) and (prefers-reduced-motion: no-preference) {
+  .dock__item svg {
+    transition: transform 0.12s var(--ease);
+  }
+
+  .dock__item:active svg {
+    transform: scale(0.9);
+  }
+
+  .dock__item.is-on:not(:active) svg {
+    animation: dock-select 0.18s var(--ease);
+  }
+}
+
+@keyframes dock-select {
+  from {
+    transform: translateY(2px);
+  }
+}

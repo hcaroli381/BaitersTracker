@@ -7,6 +7,7 @@ import { adminView } from './admin.js';
 const app = document.getElementById('app');
 let shellReady = false;
 let routeVersion = 0;
+let routeRefreshTimer;
 
 /** Marcador: este navegador ha decidido no ser jugador (p. ej. el PC del admin). */
 const NO_PLAYER = 'bt.no.player';
@@ -424,12 +425,13 @@ function startLive() {
 }
 
 /** Refresco por cambios de otros: sin subir al principio ni repetir la entrada. */
-async function refreshRoute() {
-  if (document.querySelector('.sheet')) return;
+function refreshRoute() {
+  if (document.querySelector('.sheet')) return false;
   // No pisar un formulario a medio rellenar (p. ej. en Admin).
   const active = document.activeElement;
-  if (active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return;
+  if (active && /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return false;
   renderRoute({ animate: false, scroll: false });
+  return true;
 }
 
 function meChip() {
@@ -519,11 +521,17 @@ async function renderRoute({ animate = true, scroll = true, transition = false }
   const host = document.getElementById('view');
   if (!host) return;
   const version = ++routeVersion;
+  clearTimeout(routeRefreshTimer);
   const freshness = document.getElementById('freshness');
   const isCurrent = () => version === routeVersion && host.isConnected;
 
   const useTransition =
     transition && animate && typeof document.startViewTransition === 'function' && !reduceMotion();
+
+  const sourceCard = transition && animate && route.name === 'jugador' && route.id
+    ? [...host.querySelectorAll('.scard')].find((card) => card.getAttribute('href') === href('jugador', route.id))
+    : null;
+  const sourcePhoto = sourceCard?.querySelector('.scard__photo .ph');
 
   document.querySelectorAll('[data-nav]').forEach((a) => {
     const active =
@@ -593,7 +601,21 @@ async function renderRoute({ animate = true, scroll = true, transition = false }
     freshness.hidden = !(stale || view.stale);
     // Con View Transition la vista nueva debe estar ya asentada para la captura.
     host.classList.toggle('is-quiet', !animate || useTransition);
+    view.beforePaint?.(host);
     host.innerHTML = view.html;
+    if (sourcePhoto && !useTransition && !reduceMotion()) {
+      host.querySelector('.phero__photo')?.classList.add('is-profile-entering');
+    }
+    if (Number.isFinite(view.refreshAt)) {
+      const refreshWhenReady = () => {
+        if (!isCurrent()) return;
+        const remaining = view.refreshAt - Date.now();
+        if (remaining <= 0 && refreshRoute()) return;
+        routeRefreshTimer = setTimeout(refreshWhenReady, Math.min(Math.max(1000, remaining), 2 ** 31 - 1));
+      };
+      routeRefreshTimer = setTimeout(refreshWhenReady,
+        Math.min(Math.max(0, view.refreshAt - Date.now()), 2 ** 31 - 1));
+    }
     try {
       view.mount?.(host);
     } catch (err) {
@@ -605,13 +627,25 @@ async function renderRoute({ animate = true, scroll = true, transition = false }
   if (!isCurrent()) return;
 
   if (useTransition) {
+    // Comparte únicamente la foto de la tarjeta que ha abierto el perfil.
+    if (sourcePhoto) sourcePhoto.style.viewTransitionName = 'player-photo';
+    let destinationPhoto;
     let painted = false;
     const run = () => {
       painted = true;
       paint();
+      if (sourcePhoto) {
+        destinationPhoto = host.querySelector('.phero__photo .ph');
+        if (destinationPhoto) destinationPhoto.style.viewTransitionName = 'player-photo';
+      }
     };
     try {
-      await document.startViewTransition(run).updateCallbackDone;
+      const animation = document.startViewTransition(run);
+      animation.finished.finally(() => {
+        sourcePhoto?.style.removeProperty('view-transition-name');
+        destinationPhoto?.style.removeProperty('view-transition-name');
+      }).catch(() => {});
+      await animation.updateCallbackDone;
     } catch {
       // Si el navegador cancela la transición, el cambio ya se ha hecho.
       if (!painted) paint();

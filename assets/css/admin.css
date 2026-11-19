@@ -255,6 +255,20 @@
   gap: 6px;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .lineupEdit__team-symbol--added {
+    display: inline-block;
+    animation: lineup-added 180ms var(--ease) both;
+  }
+
+  @keyframes lineup-added {
+    from {
+      opacity: 0.55;
+      transform: scale(0.7);
+    }
+  }
+}
+
 .lineupEdit__goals .input {
   width: 5rem;
 }
